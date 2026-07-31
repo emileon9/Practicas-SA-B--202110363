@@ -15,8 +15,9 @@
 - Express (v5)
 - Prisma ORM (v7)
 - PostgreSQL
+- Zod (validación de entrada)
 
-> Estado actual del proyecto: las capas `interfaces/`, `repositories/`, `services/`, `types/` y `config/` ya están implementadas. Las capas `controllers/`, `routes/`, `validators/`, `middlewares/` y `utils/` existen como archivos vacíos (scaffold) pendientes de implementación.
+> Estado actual del proyecto: las capas `interfaces/`, `repositories/`, `services/`, `validators/`, `types/` y `config/` ya están implementadas. Las capas `controllers/`, `routes/`, `middlewares/` y `utils/` existen como archivos vacíos (scaffold) pendientes de implementación.
 
 ## Instalación y ejecución
 
@@ -84,7 +85,7 @@ El proyecto sigue una arquitectura por capas inspirada en Clean Architecture, pe
 - **`repositories/`** — Única capa que conoce Prisma; implementa el acceso a datos definido por `interfaces/`.
 - **`interfaces/`** — Contratos (abstracciones) que desacoplan capas entre sí y habilitan Dependency Inversion.
 - **`routes/`** *(pendiente)* — Mapeo de verbo HTTP + path hacia un método de `controllers/`.
-- **`validators/`** *(pendiente)* — Validación de entrada, separada de la lógica de negocio.
+- **`validators/`** — Validación de forma/formato de la entrada con Zod, separada de la lógica de negocio.
 - **`middlewares/`** *(pendiente)* — Cross-cutting concerns (manejo de errores, 404, etc.).
 - **`types/`** — DTOs y tipos de dominio, independientes del modelo generado por Prisma.
 - **`utils/`** *(pendiente)* — Helpers genéricos sin significado de negocio.
@@ -167,6 +168,19 @@ private validateCostoEstimado(costoEstimado: string): void {
     throw new InvalidSolicitudDataError('El costo estimado debe ser mayor que 0');
   }
 }
+```
+
+Un cuarto ejemplo, ahora en el límite de entrada de la API: `src/validators/solicitudOperativa.validator.ts` cambia únicamente si cambia el **formato** aceptado del payload HTTP (tipos, longitudes, rangos numéricos) — no conoce Express, no conoce Prisma, no llama a `repositories/` y no decide reglas de negocio dependientes del estado actual de una solicitud (esas siguen siendo responsabilidad exclusiva de `services/`, ver la nota de "Responsabilidades" en `docs/ARCHITECTURE.md`):
+
+```typescript
+export const createSolicitudOperativaSchema = z
+  .object({
+    titulo: tituloSchema,
+    areaSolicitante: areaSolicitanteSchema,
+    prioridad: prioridadSchema,
+    costoEstimado: costoEstimadoSchema,
+  })
+  .strict();
 ```
 
 ### Open/Closed Principle (OCP)

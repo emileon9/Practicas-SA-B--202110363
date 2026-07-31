@@ -10,7 +10,7 @@ Capas definidas en `src/`:
 src/
  ├── config/         (implementado)
  ├── controllers/    (vacío, pendiente)
- ├── services/       (vacío, pendiente)
+ ├── services/       (implementado)
  ├── repositories/   (implementado)
  ├── routes/         (vacío, pendiente)
  ├── middlewares/    (vacío, pendiente)
@@ -22,6 +22,26 @@ src/
  ├── app.ts          (vacío, pendiente)
  └── server.ts       (vacío, pendiente)
 ```
+
+## Flujo arquitectónico de una solicitud
+
+```
+Controller
+    ↓
+Service Interface
+    ↓
+Service Implementation
+    ↓
+Repository Interface
+    ↓
+Repository Implementation
+    ↓
+Prisma
+    ↓
+PostgreSQL
+```
+
+Estado actual: implementado de extremo a extremo desde **Service Interface** hasta **PostgreSQL**. `SolicitudOperativaService` (Service Implementation) depende de `ISolicitudOperativaService` (Service Interface, el contrato que expondrá hacia `controllers/`) y recibe `ISolicitudOperativaRepository` (Repository Interface) por constructor, que a su vez resuelve en `SolicitudOperativaRepository` (Repository Implementation) → Prisma → PostgreSQL. El tramo `Controller` es el único que falta por construir.
 
 ## Responsabilidad de cada capa
 
@@ -37,13 +57,24 @@ Responsable de la configuración transversal de la aplicación: carga y validaci
 Contiene los contratos (abstracciones) que desacoplan capas entre sí. Es la pieza clave para aplicar Dependency Inversion: las capas de negocio dependerán de estos contratos, nunca de una implementación concreta.
 
 - `solicitudOperativa.repository.interface.ts`: contrato `ISolicitudOperativaRepository` con los cinco métodos de persistencia (`create`, `findAll`, `findById`, `update`, `delete`). No importa nada de Prisma.
-- `solicitudOperativa.service.interface.ts`: reservado para el contrato de casos de uso; actualmente vacío, se definirá al implementar `services/`.
+- `solicitudOperativa.service.interface.ts`: contrato `ISolicitudOperativaService` con las mismas cinco operaciones a nivel de caso de uso. Su `findById` retorna `Promise<SolicitudOperativa>` (no nullable) en lugar de `Promise<SolicitudOperativa | null>` como el de persistencia, porque a este nivel "no encontrado" es una condición de negocio (se resuelve lanzando `SolicitudNotFoundError`), no un resultado normal de una consulta.
 
 ### `repositories/`
 
-Única capa que conoce Prisma y, por lo tanto, la base de datos. Traduce el contrato de `interfaces/` a llamadas concretas del cliente de Prisma, y traduce el resultado de vuelta a los tipos de dominio definidos en `types/`. No valida datos de entrada, no conoce Express, no decide códigos de estado HTTP y no contiene reglas de negocio (por ejemplo, no decide qué significa "solicitud no encontrada" a nivel de aplicación — eso quedará a cargo de `services/`).
+Única capa que conoce Prisma y, por lo tanto, la base de datos. Traduce el contrato de `interfaces/` a llamadas concretas del cliente de Prisma, y traduce el resultado de vuelta a los tipos de dominio definidos en `types/`. No valida datos de entrada, no conoce Express, no decide códigos de estado HTTP y no contiene reglas de negocio (por ejemplo, no decide qué significa "solicitud no encontrada" a nivel de aplicación — eso lo decide `services/`, ver más abajo).
 
 - `solicitudOperativa.repository.ts`: implementa `ISolicitudOperativaRepository` usando el `PrismaClient` de `config/prisma.client.ts`.
+
+### `services/`
+
+Contiene los casos de uso y las reglas de negocio de `SolicitudOperativa`, independientes de Express y de Prisma. Es el módulo de alto nivel que decide qué significa "no encontrado", qué datos son válidos y qué transiciones de estado están permitidas — nada de esto vive en `repositories/`.
+
+- `solicitudOperativa.service.ts`: implementa `ISolicitudOperativaService` mediante la clase `SolicitudOperativaService`, que:
+  - recibe `ISolicitudOperativaRepository` por constructor (ver la sección "Aplicación de Dependency Injection" más abajo);
+  - valida en `create()` que `titulo` y `areaSolicitante` no estén vacíos, que `prioridad` sea un entero entre 1 y 5, y que `costoEstimado` sea mayor que 0, forzando siempre `estado: 'registrada'` como valor inicial;
+  - valida en `update()` que la solicitud exista (lanzando `SolicitudNotFoundError` si no) y, si se envía un nuevo `estado`, que la transición sea una de las permitidas en la tabla `TRANSICIONES_VALIDAS` (`registrada → en_proceso`, `en_proceso → completada`, `registrada → cancelada`, `en_proceso → cancelada`);
+  - valida en `delete()` que la solicitud exista antes de eliminarla;
+  - define tres errores de dominio simples (`SolicitudNotFoundError`, `InvalidSolicitudDataError`, `InvalidEstadoTransitionError`) que extienden `Error`, sin ningún conocimiento de códigos de estado HTTP — esa traducción (por ejemplo, a 404 o 400) quedará a cargo de `controllers/`/`middlewares/`.
 
 ### `types/`
 
@@ -51,12 +82,11 @@ DTOs y tipos de dominio propios de la aplicación, independientes del modelo gen
 
 - `solicitudOperativa.types.ts`: define `SolicitudOperativa` (entidad de dominio), `CreateSolicitudOperativaDTO` y `UpdateSolicitudOperativaDTO`.
 
-### `controllers/`, `services/`, `routes/`, `validators/`, `middlewares/`, `utils/` (pendientes)
+### `controllers/`, `routes/`, `validators/`, `middlewares/`, `utils/` (pendientes)
 
 Existen como archivos vacíos en el scaffold inicial, reservando su ubicación en la arquitectura, pero sin contenido todavía:
 
-- `controllers/`: adaptará HTTP (`req`/`res` de Express) hacia llamadas a `services/`.
-- `services/`: contendrá los casos de uso y las reglas de negocio (por ejemplo, validar el rango 1-5 de `prioridad` como regla de aplicación, o decidir transiciones válidas de `estado`).
+- `controllers/`: adaptará HTTP (`req`/`res` de Express) hacia llamadas a `services/`, incluyendo traducir los errores de dominio de `services/` (`SolicitudNotFoundError`, `InvalidSolicitudDataError`, `InvalidEstadoTransitionError`) a códigos de estado HTTP.
 - `routes/`: mapeará verbo HTTP + path hacia un método de controller.
 - `validators/`: validación de forma de los datos de entrada (independiente de las reglas de negocio).
 - `middlewares/`: manejo centralizado de errores y de rutas no encontradas.
@@ -78,22 +108,22 @@ El `tsconfig.json` original traía `"module": "nodenext"` (ESM estricto), que ex
 
 ## Aplicación de Dependency Injection
 
-El proyecto usa **constructor injection** como mecanismo de DI, apoyado en las abstracciones de `interfaces/`. Hoy esto está preparado pero no completado: `SolicitudOperativaRepository` ya declara explícitamente que implementa `ISolicitudOperativaRepository`:
+El proyecto usa **constructor injection** como mecanismo de DI, apoyado en las abstracciones de `interfaces/`. Esto ya está implementado, no solo diseñado: `SolicitudOperativaService` (en `src/services/solicitudOperativa.service.ts`) recibe `ISolicitudOperativaRepository` como parámetro de su constructor, en lugar de instanciar `SolicitudOperativaRepository` internamente:
 
 ```typescript
-export class SolicitudOperativaRepository implements ISolicitudOperativaRepository {
-```
-
-El paso pendiente (próxima fase, `services/`) es que la clase de servicio reciba una instancia de `ISolicitudOperativaRepository` por constructor, en vez de instanciar `SolicitudOperativaRepository` directamente:
-
-```typescript
-// Patrón que se aplicará en services/ (aún no implementado):
-class SolicitudOperativaService {
+export class SolicitudOperativaService implements ISolicitudOperativaService {
   constructor(private readonly repository: ISolicitudOperativaRepository) {}
-}
 ```
 
-Esto permitirá, en pruebas unitarias, inyectar una implementación falsa de `ISolicitudOperativaRepository` sin tocar Prisma ni una base de datos real.
+`SolicitudOperativaService` (módulo de alto nivel, reglas de negocio) depende exclusivamente de `ISolicitudOperativaRepository` (la abstracción definida en `src/interfaces/solicitudOperativa.repository.interface.ts`). En ningún punto de `solicitudOperativa.service.ts` se importa `SolicitudOperativaRepository` (la clase concreta) ni nada de `src/generated/prisma` — toda referencia a Prisma queda contenida en `repositories/` y `config/prisma.client.ts`.
+
+Quien decide qué implementación concreta recibe el constructor es el código que ensambla el servicio (hoy no existe ese punto de ensamblaje porque `app.ts` sigue vacío; cuando se implemente, será algo equivalente a `new SolicitudOperativaService(new SolicitudOperativaRepository())`). `SolicitudOperativaService` en sí mismo no conoce ni decide esa elección.
+
+Esta combinación de Repository Pattern (contrato en `interfaces/`) + Dependency Injection (constructor injection en `services/`) habilita en la práctica:
+
+- **Sustituir el repositorio de Prisma por una implementación in-memory**: cualquier clase que implemente `ISolicitudOperativaRepository` (por ejemplo, una que guarde los datos en un arreglo en memoria) puede pasarse al constructor de `SolicitudOperativaService` sin modificar ni una línea de esa clase.
+- **Probar `SolicitudOperativaService` con pruebas unitarias sin una base de datos real**: las reglas de negocio (validaciones de `create`, transiciones de estado en `update`, validación de existencia) pueden verificarse inyectando un repositorio falso, sin levantar PostgreSQL ni Prisma.
+- **Mantener el desacoplamiento entre capas**: `services/` no sabe si detrás de `ISolicitudOperativaRepository` hay Prisma, otro ORM, o memoria; `repositories/` no sabe qué reglas de negocio aplica `services/` sobre los datos que persiste.
 
 ## Separación entre dominio y persistencia
 

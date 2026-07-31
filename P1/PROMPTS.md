@@ -79,3 +79,41 @@ Se creó `src/interfaces/solicitudOperativa.service.interface.ts` con el contrat
 ### Ajustes realizados
 
 No se crearon archivos fuera de los dos solicitados: los errores de dominio se definieron dentro del propio `solicitudOperativa.service.ts` en lugar de un módulo `errors/` separado, para respetar el alcance explícito de la fase ("implementa únicamente la capa de servicios"). Se decidió que el estado inicial en `create()` se fuerza siempre a `'registrada'` ignorando cualquier `estado` que el llamador intente enviar en el DTO de creación, en vez de simplemente validarlo, por ser la interpretación más segura de "el estado inicial debe ser registrada". No se actualizaron `docs/ARCHITECTURE.md` ni `docs/DATABASE.md` en esta fase porque el alcance solicitado solo mencionaba `README.md` y este archivo de prompts; quedan con la nota "services/ pendiente" desactualizada hasta la próxima fase.
+
+(Nota: en una fase intermedia posterior, no listada aquí como prompt separado por ser puramente documental, se actualizó `docs/ARCHITECTURE.md` para reflejar que `services/` y la Dependency Injection ya estaban implementados.)
+
+## Prompt 5
+
+### Objetivo
+
+Implementar `src/validators/solicitudOperativa.validator.ts` con esquemas Zod para `create` y `update`, validando exclusivamente el formato/forma del payload de entrada, sin duplicar las reglas de negocio ni las transiciones de estado que ya viven en `services/`.
+
+### Prompt enviado
+
+> Continuemos con la siguiente capa: validators/. Implementa únicamente validación de entrada utilizando Zod. [...] Crear `createSolicitudOperativaSchema` (titulo requerido string máx. 200, areaSolicitante requerido string máx. 100, prioridad entero 1-5, costoEstimado positivo con representación adecuada para dinero) y `updateSolicitudOperativaSchema` (todos los campos opcionales, estado solo con los 4 valores válidos). No importar Express, no importar Prisma, no llamar repositories, no contener reglas de transición de estados, no duplicar lógica del Service. Ejecutar `npm run build`, actualizar `README.md` solo si hay nueva evidencia SOLID real, actualizar `PROMPTS.md` con Prompt 5, y explicar qué responsabilidades quedan en el validator y cuáles permanecen en el service.
+
+### Resultado obtenido
+
+Se instaló `zod` (v4) y se creó `src/validators/solicitudOperativa.validator.ts` con `createSolicitudOperativaSchema` y `updateSolicitudOperativaSchema` (este último construido con `.partial()` sobre los mismos schemas de campo reutilizados). Ambos usan `.strict()` para rechazar claves no declaradas — en particular, `createSolicitudOperativaSchema` no declara `estado` en absoluto, por lo que un intento de enviarlo en el payload de creación es rechazado explícitamente por Zod (`"Unrecognized key: estado"`), reforzando en el límite de entrada la misma regla de negocio que ya fuerza el service ("el estado inicial siempre es `registrada`"). `costoEstimado` se valida como `string` con una regex de hasta 2 decimales, coherente con la representación decimal-safe ya usada en `types/`/`repositories/`. Se verificó el comportamiento real con casos de prueba ad-hoc (ejecutados con `tsx` y luego eliminados) antes de dar la tarea por completa. Se agregó un cuarto ejemplo de SRP en el `README.md`; no se encontró evidencia nueva genuina para OCP, LSP, ISP o DIP, así que esas secciones no se tocaron.
+
+### Ajustes realizados
+
+La API de mensajes de error de Zod cambió entre v3 y v4: `required_error` (v3) ya no existe y hubo que usar `error` (v4) en su lugar — esto se detectó porque `npm run build` falló con `TS2769`/`TS2353` en las cuatro definiciones de schema, no porque se hubiera anticipado. También se resolvió explícitamente la aparente tensión con "no duplicar lógica del Service": `prioridad` (1-5) y `costoEstimado` (> 0) se validan en ambas capas, pero por razones distintas — `validators/` rechaza payloads HTTP mal formados en el límite de entrada (rápido, declarativo, sin acceso a base de datos), mientras que `services/` sigue siendo la única fuente de verdad de las reglas de negocio reales (transiciones de estado, existencia previa, y forzar `estado: 'registrada'` en creación) y actúa como defensa en profundidad para cualquier llamador que no pase por HTTP/`validators/`. Esta distinción se explica en la respuesta final, no se documentó todavía en `docs/ARCHITECTURE.md` (fuera del alcance pedido en esta fase).
+
+## Prompt 6
+
+### Objetivo
+
+Implementar `src/controllers/solicitudOperativa.controller.ts` como adaptador HTTP entre Express y `services/`, con los cinco métodos CRUD, usando los validators de Zod ya existentes para los payloads y delegando cualquier error a `next(error)` sin traducirlo a códigos HTTP todavía.
+
+### Prompt enviado
+
+> Continuemos con la implementación de la capa controllers/. Implementa únicamente controllers, sin crear todavía routes ni middlewares globales. [...] `SolicitudOperativaController` debe recibir `ISolicitudOperativaService` mediante constructor injection, no importar repositories ni Prisma, no contener reglas de negocio, no duplicar validaciones del service, usar validators existentes para validar payloads. Implementar `create/findAll/findById/update/delete(req, res, next)`. CREATE valida con `createSolicitudOperativaSchema` y responde 201; FIND ALL responde 200; FIND BY ID convierte el id de params y responde 200; UPDATE valida con `updateSolicitudOperativaSchema` y responde 200; DELETE responde 204. No capturar errores de negocio para convertirlos aquí — usar `next(error)`. Ejecutar `npm run build`, explicar cómo se mantiene SRP y DIP, y agregar Prompt 6 en `PROMPTS.md`.
+
+### Resultado obtenido
+
+Se creó `src/controllers/solicitudOperativa.controller.ts` con la clase `SolicitudOperativaController`, que recibe `ISolicitudOperativaService` por constructor y expone los cinco métodos como propiedades de tipo arrow function (para conservar `this` cuando Express las use como referencias sueltas en `routes/`, sin necesitar `.bind()`). Cada método hace `try { ... } catch (error) { next(error); }`, sin inspeccionar ni traducir el tipo de error. `create` valida con `createSolicitudOperativaSchema.parse(req.body)`; `update` valida con `updateSolicitudOperativaSchema.parse(req.body)`. `npm run build` compiló sin errores tras dos ajustes de tipado.
+
+### Ajustes realizados
+
+`npm run build` falló dos veces antes de compilar limpio, por razones no anticipadas en el prompt original: (1) Express 5 tipa `req.params['id']` como `string | string[] | undefined` (por el soporte de `path-to-regexp` a segmentos repetidos en rutas), no solo `string | undefined` como en Express 4 — se ajustó `parseId` para aceptar y rechazar explícitamente el caso `string[]`. (2) Con `exactOptionalPropertyTypes: true`, el tipo inferido por `updateSolicitudOperativaSchema.partial()` de Zod (propiedades opcionales tipadas como `T | undefined`) no era asignable directamente a `UpdateSolicitudOperativaDTO` (propiedades opcionales `T` sin `undefined` explícito) — se agregó un `toUpdateDTO()` que reconstruye el objeto con el mismo patrón de spread condicional (`...(x !== undefined && { x })`) ya usado en `repositories/solicitudOperativa.repository.ts` y `services/solicitudOperativa.service.ts`, evitando introducir un estilo nuevo. Se definió `InvalidIdError` (un error simple, sin código HTTP) para el caso de un id no numérico en la URL, ya que el enunciado pide "convertir el id al tipo correcto" pero no menciona dónde vive ese contrato de error — se mantuvo co-ubicado en el propio archivo del controller, siguiendo el mismo precedente de `services/solicitudOperativa.service.ts` (errores definidos junto a la clase que los lanza). No se actualizó `README.md` en esta fase porque no fue solicitado explícitamente.
