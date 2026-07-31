@@ -61,3 +61,21 @@ Este mismo conjunto de documentos (`README.md`, `PROMPTS.md`, `docs/ARCHITECTURE
 ### Ajustes realizados
 
 Se marcó explícitamente en el `README.md` y en `docs/ARCHITECTURE.md` qué capas están implementadas (`config/`, `interfaces/`, `repositories/`, `types/`) y cuáles siguen vacías (`services/`, `controllers/`, `routes/`, `validators/`, `middlewares/`, `utils/`), para no dar la impresión de que el CRUD completo ya existe. En la sección de Open/Closed y de Interface Segregation se agregó una nota honesta indicando que la propiedad de "extensibilidad sin modificación" es, por ahora, estructural (no demostrada todavía con una segunda implementación real), ya que `services/` aún no consume la interfaz de repositorio.
+
+## Prompt 4
+
+### Objetivo
+
+Implementar la capa `services/` (lógica de negocio de `SolicitudOperativa`) desacoplada de Express y Prisma, usando constructor injection sobre `ISolicitudOperativaRepository`, con reglas de negocio de creación, transición de estado en actualización y validación de existencia antes de actualizar/eliminar.
+
+### Prompt enviado
+
+> Continuemos con la siguiente capa de la arquitectura: services/. [...] Crear `src/services/solicitudOperativa.service.ts` y si es necesario `src/interfaces/solicitudOperativa.service.interface.ts`. [...] `SolicitudOperativaService` debe recibir `ISolicitudOperativaRepository` mediante constructor injection, depender de la interfaz (no de la clase concreta), contener reglas de negocio, no importar Express ni Prisma. Reglas: en CREATE, título y área obligatorios, prioridad 1-5, costoEstimado > 0, estado inicial siempre `registrada`. En UPDATE, validar existencia y aplicar transiciones válidas de estado (registrada→en_proceso, en_proceso→completada, registrada→cancelada, en_proceso→cancelada), sin permitir otras. En DELETE, validar existencia. Crear errores de dominio simples, sin manejar HTTP. Ejecutar `npm run build`, explicar cómo se evidencia SRP/DIP/OCP/LSP, y actualizar `README.md` y `PROMPTS.md` con la nueva evidencia real.
+
+### Resultado obtenido
+
+Se creó `src/interfaces/solicitudOperativa.service.interface.ts` con el contrato `ISolicitudOperativaService` (mismas cinco operaciones que el repositorio, pero `findById` no nullable) y `src/services/solicitudOperativa.service.ts` con la clase `SolicitudOperativaService`, que recibe `ISolicitudOperativaRepository` por constructor y define tres errores de dominio (`SolicitudNotFoundError`, `InvalidSolicitudDataError`, `InvalidEstadoTransitionError`) junto con una tabla `TRANSICIONES_VALIDAS` como única fuente de verdad de las transiciones permitidas. `npm run build` compiló sin errores. Se actualizó la sección SOLID del `README.md` con evidencia real de las cinco capas (constructor injection real para OCP/DIP, contraste `findById` nullable vs. no-nullable para LSP/ISP, métodos de validación privados para SRP).
+
+### Ajustes realizados
+
+No se crearon archivos fuera de los dos solicitados: los errores de dominio se definieron dentro del propio `solicitudOperativa.service.ts` en lugar de un módulo `errors/` separado, para respetar el alcance explícito de la fase ("implementa únicamente la capa de servicios"). Se decidió que el estado inicial en `create()` se fuerza siempre a `'registrada'` ignorando cualquier `estado` que el llamador intente enviar en el DTO de creación, en vez de simplemente validarlo, por ser la interpretación más segura de "el estado inicial debe ser registrada". No se actualizaron `docs/ARCHITECTURE.md` ni `docs/DATABASE.md` en esta fase porque el alcance solicitado solo mencionaba `README.md` y este archivo de prompts; quedan con la nota "services/ pendiente" desactualizada hasta la próxima fase.

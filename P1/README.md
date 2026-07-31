@@ -16,7 +16,7 @@
 - Prisma ORM (v7)
 - PostgreSQL
 
-> Estado actual del proyecto: las capas `interfaces/`, `repositories/`, `types/` y `config/` ya están implementadas. Las capas `services/`, `controllers/`, `routes/`, `validators/`, `middlewares/` y `utils/` existen como archivos vacíos (scaffold) pendientes de implementación.
+> Estado actual del proyecto: las capas `interfaces/`, `repositories/`, `services/`, `types/` y `config/` ya están implementadas. Las capas `controllers/`, `routes/`, `validators/`, `middlewares/` y `utils/` existen como archivos vacíos (scaffold) pendientes de implementación.
 
 ## Instalación y ejecución
 
@@ -80,7 +80,7 @@ El proyecto sigue una arquitectura por capas inspirada en Clean Architecture, pe
 
 - **`config/`** — Configuración e infraestructura transversal: carga/validación de variables de entorno (`env.ts`) e instanciación del cliente de Prisma (`prisma.client.ts`).
 - **`controllers/`** *(pendiente)* — Adaptador HTTP: traducirá `req`/`res` de Express hacia llamadas a `services/`, sin lógica de negocio.
-- **`services/`** *(pendiente)* — Casos de uso y reglas de negocio, independientes de Express y de Prisma.
+- **`services/`** — Casos de uso y reglas de negocio (validaciones de campos, transiciones de estado), independientes de Express y de Prisma.
 - **`repositories/`** — Única capa que conoce Prisma; implementa el acceso a datos definido por `interfaces/`.
 - **`interfaces/`** — Contratos (abstracciones) que desacoplan capas entre sí y habilitan Dependency Inversion.
 - **`routes/`** *(pendiente)* — Mapeo de verbo HTTP + path hacia un método de `controllers/`.
@@ -107,7 +107,7 @@ Prisma
 PostgreSQL
 ```
 
-Actualmente implementado de extremo a extremo: **Repository Interface → Repository Implementation → Prisma → PostgreSQL**. Los tramos `Controller` y `Service` se agregarán en las próximas fases sin modificar el contrato ya definido en `interfaces/solicitudOperativa.repository.interface.ts`.
+Actualmente implementado de extremo a extremo: **Service → Repository Interface → Repository Implementation → Prisma → PostgreSQL**. `SolicitudOperativaService` recibe `ISolicitudOperativaRepository` por constructor (constructor injection) y aplica las reglas de negocio antes de delegar en el repositorio. Los tramos `Controller` y `Route` se agregarán en las próximas fases sin modificar los contratos ya definidos en `interfaces/`.
 
 ## Aplicación de principios SOLID
 
@@ -152,28 +152,40 @@ function getRequiredEnv(name: string): string {
 }
 ```
 
+Un tercer ejemplo, ahora en la capa de negocio: `src/services/solicitudOperativa.service.ts` cambia únicamente si cambian las reglas de negocio de `SolicitudOperativa` (validaciones, transiciones de estado) — no conoce Express ni Prisma. Cada regla de validación vive en su propio método privado, en vez de un único bloque gigante:
+
+```typescript
+private validatePrioridad(prioridad: number): void {
+  if (!Number.isInteger(prioridad) || prioridad < 1 || prioridad > 5) {
+    throw new InvalidSolicitudDataError('La prioridad debe ser un entero entre 1 y 5');
+  }
+}
+
+private validateCostoEstimado(costoEstimado: string): void {
+  const valor = Number(costoEstimado);
+  if (Number.isNaN(valor) || valor <= 0) {
+    throw new InvalidSolicitudDataError('El costo estimado debe ser mayor que 0');
+  }
+}
+```
+
 ### Open/Closed Principle (OCP)
 
 **Explicación:** el código debe estar abierto a extensión pero cerrado a modificación. Se logra dependiendo de abstracciones en lugar de implementaciones concretas.
 
 **Aplicación:**
-Archivo: `src/interfaces/solicitudOperativa.repository.interface.ts`
+Archivo: `src/services/solicitudOperativa.service.ts`
 
-**Justificación:** `ISolicitudOperativaRepository` define el contrato completo del CRUD. Es posible crear una nueva implementación (por ejemplo, un repositorio en memoria para pruebas, o uno basado en otro ORM) sin modificar esta interfaz ni el código que ya la implementa — solo se agrega una clase nueva que la implemente.
+**Justificación:** `SolicitudOperativaService` recibe `ISolicitudOperativaRepository` (la abstracción) por constructor, no una instancia concreta de `SolicitudOperativaRepository`. Esto significa que se puede introducir una nueva implementación del repositorio (por ejemplo, una en memoria para tests, o una basada en otro ORM) y usarla dentro del servicio **sin modificar una sola línea de `SolicitudOperativaService`** — solo se le inyecta la nueva instancia al construirlo. La clase está cerrada a modificación, pero abierta a extensión a través del parámetro del constructor.
 
 Fragmento real:
 
 ```typescript
-export interface ISolicitudOperativaRepository {
-  create(data: CreateSolicitudOperativaDTO): Promise<SolicitudOperativa>;
-  findAll(): Promise<SolicitudOperativa[]>;
-  findById(id: number): Promise<SolicitudOperativa | null>;
-  update(id: number, data: UpdateSolicitudOperativaDTO): Promise<SolicitudOperativa>;
-  delete(id: number): Promise<void>;
-}
+export class SolicitudOperativaService implements ISolicitudOperativaService {
+  constructor(private readonly repository: ISolicitudOperativaRepository) {}
 ```
 
-Nota honesta: en el estado actual del proyecto aún no existe un segundo consumidor de esta interfaz (`services/` está vacío), por lo que la "extensibilidad sin modificación" es today una propiedad estructural del contrato, todavía no demostrada con una segunda implementación real. Se validará cuando se implemente `services/` en la siguiente fase.
+Antes de implementar `services/`, esta propiedad era solo estructural (la interfaz existía pero no tenía consumidor real). Ahora está demostrada con código que efectivamente depende de la abstracción y no de la clase concreta.
 
 ### Liskov Substitution Principle (LSP)
 
@@ -197,6 +209,20 @@ async findById(id: number): Promise<SolicitudOperativa | null> {
 }
 ```
 
+Ahora que existe un consumidor real de este contrato, se puede ver por qué el `| null` importa concretamente: `SolicitudOperativaService` confía en que **cualquier** implementación de `ISolicitudOperativaRepository` devuelva `null` (y no lance una excepción) cuando el registro no existe, para poder traducir esa ausencia en su propio error de dominio:
+
+```typescript
+async findById(id: number): Promise<SolicitudOperativa> {
+  const solicitud = await this.repository.findById(id);
+  if (!solicitud) {
+    throw new SolicitudNotFoundError(id);
+  }
+  return solicitud;
+}
+```
+
+Si una implementación alternativa del repositorio violara ese contrato (por ejemplo, lanzando una excepción en vez de devolver `null`), rompería silenciosamente esta lógica del servicio sin que el compilador lo detecte — por eso la sustituibilidad del contrato exacto (LSP) importa aquí, no solo como teoría.
+
 ### Interface Segregation Principle (ISP)
 
 **Explicación:** los clientes no deben ser forzados a depender de métodos que no usan. Es preferible tener varias interfaces pequeñas y específicas en lugar de una interfaz grande de propósito general.
@@ -204,9 +230,9 @@ async findById(id: number): Promise<SolicitudOperativa | null> {
 **Aplicación:**
 Archivos: `src/interfaces/solicitudOperativa.repository.interface.ts` y `src/interfaces/solicitudOperativa.service.interface.ts`
 
-**Justificación:** el proyecto ya separa, en dos archivos distintos, el contrato de persistencia (`ISolicitudOperativaRepository`) del contrato de casos de uso (`ISolicitudOperativaService`, pendiente de definir su contenido). `ISolicitudOperativaRepository` expone únicamente los cinco métodos que un consumidor de persistencia necesita (`create`, `findAll`, `findById`, `update`, `delete`) — no incluye, por ejemplo, métodos de validación o de formateo HTTP, que corresponden a otras interfaces/capas.
+**Justificación:** el proyecto separa, en dos archivos distintos, el contrato de persistencia (`ISolicitudOperativaRepository`) del contrato de casos de uso (`ISolicitudOperativaService`). Cada uno expone únicamente lo que su respectivo consumidor necesita, ni un método más: `ISolicitudOperativaRepository` no incluye validación ni reglas de negocio; `ISolicitudOperativaService` no incluye detalles de persistencia (no expone, por ejemplo, ningún método relacionado con Prisma o SQL).
 
-Fragmento real (los cinco métodos, sin nada adicional):
+Fragmento real — contrato de persistencia (cinco métodos, sin nada adicional):
 
 ```typescript
 export interface ISolicitudOperativaRepository {
@@ -218,7 +244,17 @@ export interface ISolicitudOperativaRepository {
 }
 ```
 
-Nota honesta: `src/interfaces/solicitudOperativa.service.interface.ts` existe como archivo vacío; su contenido se definirá al implementar `services/`.
+Fragmento real — contrato de casos de uso (mismos nombres de operación, pero `findById` no es nullable, porque a este nivel "no encontrado" es una condición de negocio, no un resultado normal de una consulta):
+
+```typescript
+export interface ISolicitudOperativaService {
+  create(data: CreateSolicitudOperativaDTO): Promise<SolicitudOperativa>;
+  findAll(): Promise<SolicitudOperativa[]>;
+  findById(id: number): Promise<SolicitudOperativa>;
+  update(id: number, data: UpdateSolicitudOperativaDTO): Promise<SolicitudOperativa>;
+  delete(id: number): Promise<void>;
+}
+```
 
 ### Dependency Inversion Principle (DIP)
 
@@ -245,4 +281,11 @@ Y la implementación concreta declara explícitamente que cumple ese contrato:
 export class SolicitudOperativaRepository implements ISolicitudOperativaRepository {
 ```
 
-La inversión de dependencia se completará formalmente cuando `services/` reciba `ISolicitudOperativaRepository` por constructor (constructor injection) en lugar de instanciar `SolicitudOperativaRepository` directamente — pendiente para la siguiente fase.
+La inversión de dependencia ya está completa en la capa de servicios: `SolicitudOperativaService` (módulo de alto nivel, reglas de negocio) recibe `ISolicitudOperativaRepository` (la abstracción) por constructor, y no importa en ningún momento `SolicitudOperativaRepository` (el módulo de bajo nivel) ni nada de `src/generated/prisma`:
+
+```typescript
+export class SolicitudOperativaService implements ISolicitudOperativaService {
+  constructor(private readonly repository: ISolicitudOperativaRepository) {}
+```
+
+Quien construya el servicio (en la próxima fase, probablemente `app.ts` o un contenedor de dependencias simple) decidirá qué implementación concreta de `ISolicitudOperativaRepository` inyectar — hoy sería `new SolicitudOperativaService(new SolicitudOperativaRepository())`, pero `SolicitudOperativaService` en sí no depende de esa decisión.
