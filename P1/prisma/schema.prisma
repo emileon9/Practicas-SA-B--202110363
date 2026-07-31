@@ -1,0 +1,31 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EstadoSolicitud {
+  registrada
+  en_proceso
+  completada
+  cancelada
+}
+
+model SolicitudOperativa {
+  id              Int             @id @default(autoincrement())
+  titulo          String          @db.VarChar(200)
+  areaSolicitante String          @map("area_solicitante") @db.VarChar(100)
+  prioridad       Int             @db.SmallInt
+  costoEstimado   Decimal         @map("costo_estimado") @db.Decimal(12, 2)
+  estado          EstadoSolicitud @default(registrada)
+
+  @@map("solicitudes_operativas")
+}
