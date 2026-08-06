@@ -1,0 +1,10 @@
+node_modules
+dist
+# Keep environment variables out of version control
+.env
+
+/src/generated/prisma
+
+# Cache de transpilacion del CLI de Prisma para prisma.config.ts
+/prisma.config.js
+/prisma.config.js.map
