@@ -1,4 +1,4 @@
-import * as crypto from "crypto";
+import crypto from "crypto";
 import { env } from "../config/env";
 
 const ALGORITHM = "aes-256-cbc";
@@ -30,3 +30,23 @@ export class CryptoService {
         const encrypted = Buffer.concat([cipher.update(plainText, "utf8"), cipher.final()]);
         return `${iv.toString("hex")}:${encrypted.toString("hex")}`;
     }
+
+    decrypt(cipherText: string): string {
+        const [ivHex, dataHex] = cipherText.split(":");
+        if (!ivHex || !dataHex) {
+            throw new Error("Formato de texto cifrado invalido.");
+        }
+        const iv = Buffer.from(ivHex, "hex");
+        const encryptedData = Buffer.from(dataHex, "hex");
+        const decipher = crypto.createDecipheriv(ALGORITHM, this.key, iv);
+        const decrypted = Buffer.concat([decipher.update(encryptedData), decipher.final()]);
+        return decrypted.toString("utf8");
+    }
+
+    deterministicHash(value: string): string {
+        return crypto
+            .createHmac("sha256", env.emailHashSecret)
+            .update(value.trim().toLowerCase())
+            .digest("hex");
+    }
+}
