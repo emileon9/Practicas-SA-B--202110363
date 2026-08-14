@@ -13,6 +13,14 @@ database "BD Aprobación" as DB2
 queue "Message Broker" as MB
 participant "MS6: Logging\nCentralizado" as MS6
 
+note over GW, MS2
+  Patrón defense-in-depth: el Gateway valida permiso de forma
+  genérica (rol) antes de enrutar; MS2 vuelve a verificar contra
+  P2 inmediatamente antes de persistir CUALQUIER decisión de
+  aprobación, porque muta el estado financiero del lote y no debe
+  depender exclusivamente del perímetro. Ver DIAGRAM-CONSISTENCY-REPORT.md.
+end note
+
 == Creación automática de la solicitud (evento del Escenario 1) ==
 MB ->> MS2 : evento BatchValidated(batchId, totalAmount)
 activate MS2
@@ -29,6 +37,8 @@ GW -> P2 : hasPermission(U1, MAKER, "submit_batch")
 P2 --> GW : permitido
 GW -> MS2 : forward decisión (userId=U1)
 activate MS2
+MS2 -> P2 : hasPermission(U1, MAKER, "submit_batch")\n[re-verificación, defense-in-depth]
+P2 --> MS2 : permitido
 MS2 -> DB2 : SELECT ApprovalRequest WHERE batchId
 MS2 -> MS2 : SegregationOfDutiesPolicy.canUserApprove(U1, MAKER)
 MS2 -> DB2 : INSERT ApprovalStep(step=1, role=MAKER, decision=APPROVED)
@@ -57,6 +67,8 @@ GW -> P2 : hasPermission(U2, CHECKER, "review_batch")
 P2 --> GW : permitido
 GW -> MS2 : forward decisión (userId=U2)
 activate MS2
+MS2 -> P2 : hasPermission(U2, CHECKER, "review_batch")\n[re-verificación, defense-in-depth]
+P2 --> MS2 : permitido
 MS2 -> MS2 : SegregationOfDutiesPolicy.canUserApprove(U2, CHECKER)
 alt U2 ya aprobó como MAKER (RN-05)
     MS2 --> GW : 409 Conflict "usuario ya participó"
@@ -97,6 +109,8 @@ GW -> P2 : hasPermission(U3, AUTHORIZER, "authorize_batch")
 P2 --> GW : permitido
 GW -> MS2 : forward decisión (userId=U3)
 activate MS2
+MS2 -> P2 : hasPermission(U3, AUTHORIZER, "authorize_batch")\n[re-verificación, defense-in-depth]
+P2 --> MS2 : permitido
 MS2 -> MS2 : SegregationOfDutiesPolicy.canUserApprove(U3, AUTHORIZER)
 alt U3 ya participó antes (RN-05)
     MS2 --> GW : 409 Conflict

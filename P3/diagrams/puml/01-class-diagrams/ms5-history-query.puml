@@ -51,10 +51,13 @@ package "history-query-service" {
   class BatchHistoryProjector <<ApplicationService>> {
     + onBatchUploaded(event: Object): void
     + onBatchValidated(event: Object): void
+    + onBatchValidationFailed(event: Object): void
     + onApprovalStepCompleted(event: Object): void
     + onBatchApproved(event: Object): void
+    + onBatchRejected(event: Object): void
     + onBatchSubmittedToCore(event: Object): void
-    + onNotificationSent(event: Object): void
+    + onBatchSubmissionFailed(event: Object): void
+    + onNotificationBatchProcessed(event: Object): void
   }
 
   interface BatchHistoryRepository <<Repository>> {

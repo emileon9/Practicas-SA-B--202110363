@@ -1,0 +1,128 @@
+@startuml ArquitecturaGeneral
+title Arquitectura General — Sistema de Procesamiento de Transacciones Bancarias
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam rectangle {
+  BorderColor #445566
+  BackgroundColor #F7F9FA
+}
+skinparam package {
+  BorderColor #2C3E50
+  BackgroundColor #ECF0F1
+  FontStyle bold
+}
+skinparam database {
+  BackgroundColor #FDF2E3
+}
+skinparam queue {
+  BackgroundColor #E8F1FB
+}
+
+actor "Maker / Checker /\nAuthorizer" as Usuarios
+
+package "Perímetro del sistema" {
+  component "API Gateway" as GW <<Gateway>>
+}
+
+package "Identidad y permisos (externos al dominio)" {
+  component "OAuth Corporativo\n(token 12h)" as OAuth <<External>>
+  component "Módulo de Autenticación\nPráctica 2\n(roles y permisos)" as P2 <<External>>
+}
+
+package "Dominio — Microservicios (1 BD propia c/u)" {
+  component "MS1: Transaction\nIngestion" as MS1
+  database "BD Ingesta\n(PostgreSQL)" as DB1
+
+  component "MS2: Approval\nWorkflow" as MS2
+  database "BD Aprobación\n(PostgreSQL)" as DB2
+
+  component "MS3: Core Bank\nIntegration" as MS3
+  database "BD Core\nSubmission\n(PostgreSQL)" as DB3
+
+  component "MS4: Notification" as MS4
+  database "BD Notificaciones\n(PostgreSQL)" as DB4
+
+  component "MS5: History\nQuery" as MS5
+  database "BD Historial\n(desnormalizada)" as DB5
+
+  component "MS6: Audit Logging\n(Logging Centralizado)" as MS6
+  database "BD Auditoría\n(Elasticsearch/OpenSearch)" as DB6
+}
+
+package "Backbone de eventos" {
+  queue "Message Broker\n(Apache Kafka)" as MB
+}
+
+package "Almacenamiento de archivos" {
+  component "Cloud Storage / FTP\n(CSV originales)" as Storage <<External>>
+}
+
+package "Sistemas externos" {
+  component "Core Bancario /\nCompensación Interbancaria" as Core <<External>>
+  component "Proveedor de Correo\n(SMTP/SES)" as Mail <<External>>
+  component "API Cuentas/Saldo\n(supuesto — no definido\nen el enunciado)" as AccAPI <<Assumption>>
+}
+
+' ===== Acceso de usuarios y autenticación/autorización en el perímetro =====
+Usuarios --> GW : HTTPS / REST
+GW ..> OAuth : valida token
+GW ..> P2 : valida permiso por rol\n(coarse-grained)
+
+' ===== Enrutamiento del Gateway hacia los microservicios (REST síncrono) =====
+GW --> MS1 : REST\n(POST /batches, GET /batches/{id})
+GW --> MS2 : REST\n(POST /approvals/{id}/steps)
+GW --> MS3 : REST\n(GET /submissions/{id})
+GW --> MS4 : REST\n(GET /notifications/{id})
+GW --> MS5 : REST\n(GET /history/batches)
+GW --> MS6 : REST\n(GET /audit, rol auditor)
+
+' ===== Persistencia propia — sin acceso cruzado entre microservicios =====
+MS1 --> DB1
+MS2 --> DB2
+MS3 --> DB3
+MS4 --> DB4
+MS5 --> DB5
+MS6 --> DB6
+
+' ===== Flujo de negocio: CSV -> validación -> aprobación -> core -> notificación =====
+MS1 --> Storage : almacena CSV
+MS1 ..> AccAPI : valida saldo/cuenta\n(RN-01, RN-03)
+MS1 --> MB : publica BatchUploaded\nBatchValidated / BatchValidationFailed
+
+MB --> MS2 : consume BatchValidated
+MS2 ..> P2 : re-verifica permiso por paso\n(defense-in-depth, integración Práctica 2)
+MS2 --> MB : publica ApprovalStepCompleted\nBatchApproved / BatchRejected
+
+MB --> MS3 : consume BatchApproved
+MS3 ..> MS1 : REST — consulta transacciones\nvalidadas del lote
+MS3 --> Core : envía transacciones aprobadas
+MS3 --> MB : publica BatchSubmittedToCore\n/ BatchSubmissionFailed
+
+MB --> MS4 : consume BatchApproved
+MS4 ..> MS1 : REST — consulta beneficiarios\ndel lote
+MS4 --> Mail : envía notificación\n"transacción en proceso"
+MS4 --> MB : publica NotificationBatchProcessed
+
+' ===== Historial consultable y auditoría (consumo transversal de eventos) =====
+MB --> MS5 : consume TODOS los eventos\n(proyección CQRS — RF-09)
+MS5 ..> Storage : descarga CSV original
+
+MB --> MS6 : consume TODOS los eventos\n(auditoría — RF-10)
+MS1 ..> MS6 : log directo
+MS2 ..> MS6 : log directo
+MS3 ..> MS6 : log directo
+MS4 ..> MS6 : log directo
+GW ..> MS6 : log directo\n(accesos y errores de auth)
+
+legend right
+  |= Símbolo |= Significado |
+  | --> | Comunicación síncrona REST / persistencia propia |
+  | ..> | Dependencia, validación o evento asíncrono |
+  | **queue** | Backbone asíncrono (Apache Kafka) |
+  | <<External>> | Sistema fuera del alcance de este desarrollo |
+  | <<Assumption>> | Dependencia no definida por el enunciado (ver riesgos) |
+  Ningún microservicio accede a la BD de otro:
+  toda información cruzada se obtiene por REST o evento.
+endlegend
+@enduml

@@ -1,0 +1,138 @@
+@startuml DiagramaComponentes
+title Diagrama UML de Componentes — Sistema de Procesamiento de Transacciones Bancarias
+skinparam componentStyle uml2
+skinparam shadowing false
+skinparam frame {
+  BorderColor #2C3E50
+  FontStyle bold
+}
+skinparam component {
+  BackgroundColor #F7F9FA
+  BorderColor #445566
+}
+
+actor Usuario
+
+frame "Sistema (componentes internos)" {
+
+  [API Gateway] as GW
+
+  package "transaction-ingestion-service" {
+    [MS1: Transaction Ingestion] as MS1
+    database "BD Ingesta" as DB1
+    interface "IBatchAPI" as IBatchAPI
+    MS1 -up- IBatchAPI
+    MS1 --> DB1
+  }
+
+  package "approval-workflow-service" {
+    [MS2: Approval Workflow] as MS2
+    database "BD Aprobación" as DB2
+    interface "IApprovalAPI" as IApprovalAPI
+    MS2 -up- IApprovalAPI
+    MS2 --> DB2
+  }
+
+  package "core-bank-integration-service" {
+    [MS3: Core Bank Integration] as MS3
+    database "BD Core Submission" as DB3
+    interface "ISubmissionQueryAPI" as ISubmissionAPI
+    MS3 -up- ISubmissionAPI
+    MS3 --> DB3
+  }
+
+  package "notification-service" {
+    [MS4: Notification] as MS4
+    database "BD Notificaciones" as DB4
+    interface "INotificationQueryAPI" as INotifAPI
+    MS4 -up- INotifAPI
+    MS4 --> DB4
+  }
+
+  package "history-query-service" {
+    [MS5: History Query] as MS5
+    database "BD Historial" as DB5
+    interface "IHistoryAPI" as IHistoryAPI
+    MS5 -up- IHistoryAPI
+    MS5 --> DB5
+  }
+
+  package "audit-logging-service" {
+    [MS6: Audit Logging] as MS6
+    database "BD Auditoría" as DB6
+    interface "IAuditAPI" as IAuditAPI
+    MS6 -up- IAuditAPI
+    MS6 --> DB6
+  }
+
+  queue "Message Broker\n(Kafka)" as MB
+  interface "IEventBus" as IEventBus
+  MB -up- IEventBus
+}
+
+frame "Sistemas externos" {
+  [OAuth Corporativo] as OAuth <<external>>
+  interface "ITokenValidation" as ITokenValidation
+  OAuth -up- ITokenValidation
+
+  [Módulo Autorización\nPráctica 2] as P2 <<external>>
+  interface "IAuthorizationCheck" as IAuthCheck
+  P2 -up- IAuthCheck
+
+  [Cloud Storage / FTP] as Storage <<external>>
+  interface "IFileStorage" as IFileStorage
+  Storage -up- IFileStorage
+
+  [Core Bancario Externo] as Core <<external>>
+  interface "ICoreBankSubmission" as ICoreSubmit
+  Core -up- ICoreSubmit
+
+  [Proveedor de Correo] as Mail <<external>>
+  interface "IEmailDelivery" as IEmailDelivery
+  Mail -up- IEmailDelivery
+
+  [API Cuentas/Saldo] as AccAPI <<external, supuesto>>
+  interface "IAccountVerification" as IAccVerif
+  AccAPI -up- IAccVerif
+}
+
+' ===== Gateway: consume identidad y enruta hacia los microservicios internos =====
+Usuario --> GW : HTTPS / REST
+GW ..> ITokenValidation
+GW ..> IAuthCheck : verificación\ncoarse-grained
+GW ..> IBatchAPI
+GW ..> IApprovalAPI
+GW ..> ISubmissionAPI
+GW ..> INotifAPI
+GW ..> IHistoryAPI
+GW ..> IAuditAPI
+
+' ===== Dependencias de cada microservicio hacia sistemas externos =====
+MS1 ..> IFileStorage
+MS1 ..> IAccVerif
+MS2 ..> IAuthCheck : re-verificación\nfine-grained (defense-in-depth)
+MS3 ..> ICoreSubmit
+MS4 ..> IEmailDelivery
+MS5 ..> IFileStorage : descarga CSV original
+
+' ===== Comunicación service-to-service síncrona (REST, no pasa por el Gateway) =====
+MS3 ..> IBatchAPI : consulta transacciones\ndel lote aprobado
+MS4 ..> IBatchAPI : consulta beneficiarios\ndel lote aprobado
+
+' ===== Comunicación asíncrona vía broker =====
+MS1 ..> IEventBus : publica BatchUploaded,\nBatchValidated/Failed
+MS2 ..> IEventBus : consume BatchValidated;\npublica BatchApproved/Rejected
+MS3 ..> IEventBus : consume BatchApproved;\npublica BatchSubmittedToCore/Failed
+MS4 ..> IEventBus : consume BatchApproved;\npublica NotificationBatchProcessed
+MS5 ..> IEventBus : consume todos los eventos\n(proyección CQRS)
+MS6 ..> IEventBus : consume todos los eventos\n(auditoría)
+
+legend right
+  |= Notación |= Significado |
+  | ○ interfaz | Interfaz provista (puerto de API) |
+  | ..> | Interfaz requerida / dependencia |
+  | --> | Persistencia propietaria (sin acceso cruzado) |
+  | <<external>> | Componente fuera del sistema desarrollado |
+  | <<external, supuesto>> | Dependencia no definida por el enunciado |
+endlegend
+@enduml
