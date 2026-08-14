@@ -1,0 +1,85 @@
+@startuml MS2_ApprovalWorkflow
+skinparam classAttributeIconSize 0
+
+package "approval-workflow-service" {
+
+  enum ApprovalStatus {
+    PENDING_MAKER
+    PENDING_CHECKER
+    PENDING_AUTHORIZER
+    APPROVED
+    REJECTED
+  }
+
+  enum ApproverRole {
+    MAKER
+    CHECKER
+    AUTHORIZER
+  }
+
+  enum Decision {
+    APPROVED
+    REJECTED
+  }
+
+  class ApprovalRequest <<AggregateRoot>> {
+    - id: UUID
+    - batchId: UUID
+    - currentStep: int
+    - totalAmount: Money
+    - status: ApprovalStatus
+    - createdAt: DateTime
+    - completedAt: DateTime
+    + registerStep(step: ApprovalStep): void
+    + isComplete(): boolean
+    + nextRequiredRole(): ApproverRole
+  }
+
+  class ApprovalStep <<Entity>> {
+    - id: UUID
+    - stepNumber: int
+    - roleRequired: ApproverRole
+    - userId: UUID
+    - decision: Decision
+    - comment: String
+    - decidedAt: DateTime
+  }
+
+  class Money <<ValueObject>> {
+    - amount: BigDecimal
+    - currency: String
+  }
+
+  class SegregationOfDutiesPolicy <<DomainService>> {
+    + canUserApprove(request: ApprovalRequest, userId: UUID, role: ApproverRole): boolean
+  }
+
+  class ApprovalService <<ApplicationService>> {
+    + submitDecision(batchId: UUID, userId: UUID, role: ApproverRole, decision: Decision, comment: String): void
+    + handleBatchValidated(batchId: UUID, totalAmount: Money): void
+  }
+
+  interface ApprovalRequestRepository <<Repository>> {
+    + save(request: ApprovalRequest): void
+    + findByBatchId(batchId: UUID): ApprovalRequest
+  }
+
+  interface IAuthorizationClient <<Interface>> {
+    + hasPermission(userId: UUID, role: ApproverRole, action: String): boolean
+  }
+
+  interface IEventPublisher <<Interface>> {
+    + publish(eventName: String, payload: Object): void
+  }
+
+  ApprovalRequest "1" *-- "1..3" ApprovalStep : contiene
+  ApprovalRequest "1" -- "1" Money : monto total (denormalizado)
+
+  ApprovalService ..> ApprovalRequestRepository : usa
+  ApprovalService ..> IAuthorizationClient : valida rol\n(integración Práctica 2)
+  ApprovalService ..> SegregationOfDutiesPolicy : aplica
+  ApprovalService ..> IEventPublisher : publica BatchApproved/Rejected
+  SegregationOfDutiesPolicy ..> ApprovalRequest : evalúa
+  SegregationOfDutiesPolicy ..> ApprovalStep : evalúa
+}
+@enduml

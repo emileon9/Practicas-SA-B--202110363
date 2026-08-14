@@ -1,0 +1,61 @@
+@startuml MS4_Notification
+skinparam classAttributeIconSize 0
+
+package "notification-service" {
+
+  enum NotificationStatus {
+    PENDING
+    SENT
+    FAILED
+  }
+
+  class NotificationRecord <<Entity>> {
+    - id: UUID
+    - batchId: UUID
+    - transactionRef: UUID
+    - beneficiaryEmail: String
+    - beneficiaryName: String
+    - templateUsed: String
+    - status: NotificationStatus
+    - sentAt: DateTime
+    - retryCount: int
+    - errorMessage: String
+    + markSent(): void
+    + markFailed(error: String): void
+  }
+
+  class NotificationDispatchService <<DomainService>> {
+    + notifyBeneficiaries(batchId: UUID, beneficiaries: List): void
+  }
+
+  class Beneficiary <<ValueObject>> {
+    - name: String
+    - email: String
+  }
+
+  interface NotificationRecordRepository <<Repository>> {
+    + existsByBatchAndEmail(batchId: UUID, email: String): boolean
+    + save(record: NotificationRecord): void
+  }
+
+  interface IEmailProvider <<Interface>> {
+    + send(to: String, subject: String, body: String): DeliveryResult
+  }
+
+  interface ITemplateRenderer <<Interface>> {
+    + render(templateName: String, data: Map): String
+  }
+
+  class DeliveryResult <<ValueObject>> {
+    - success: boolean
+    - errorMessage: String
+  }
+
+  NotificationDispatchService ..> Beneficiary : recibe
+  NotificationDispatchService ..> NotificationRecordRepository : verifica idempotencia
+  NotificationDispatchService ..> ITemplateRenderer : renderiza
+  NotificationDispatchService ..> IEmailProvider : envía
+  NotificationDispatchService ..> NotificationRecord : crea/actualiza
+  IEmailProvider ..> DeliveryResult : retorna
+}
+@enduml

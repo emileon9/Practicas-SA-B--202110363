@@ -1,0 +1,47 @@
+@startuml Escenario3_EnvioCoreBancario
+autonumber
+skinparam sequenceMessageAlign center
+
+queue "Message Broker" as MB
+participant "MS3: Core Bank\nIntegration" as MS3
+participant "MS1: Transaction\nIngestion (API)" as MS1
+database "BD Core Submission" as DB3
+participant "Core Bancario /\nCompensación (externo)" as Core
+participant "MS6: Logging\nCentralizado" as MS6
+participant "MS5: History" as MS5
+
+MB ->> MS3 : evento BatchApproved(batchId)
+activate MS3
+MS3 -> MS1 : GET /batches/{batchId}/transactions?status=VALID
+activate MS1
+MS1 --> MS3 : lista de transacciones\n(cuentas, montos, tipo)
+deactivate MS1
+
+MS3 -> DB3 : INSERT CoreSubmission(batchId, status=PENDING)
+MS3 -> DB3 : INSERT CoreSubmissionDetail[] por transacción
+MS3 ->> MS6 : log "CoreSubmissionInitiated"
+
+MS3 -> Core : submit(transacciones del lote)
+alt Core acepta el envío
+    Core --> MS3 : accepted, coreReferenceId
+    MS3 -> DB3 : UPDATE CoreSubmission(status=SENT, coreReferenceId)
+    MS3 ->> MB : publish BatchSubmittedToCore(batchId, coreReferenceId)
+    MS3 ->> MS6 : log "BatchSubmittedToCore - éxito (AUDIT)"
+else Core rechaza, falla o timeout
+    Core --> MS3 : error / timeout
+    MS3 -> DB3 : UPDATE CoreSubmission(status=FAILED, retryCount+1, lastError)
+    MS3 ->> MB : publish BatchSubmissionFailed(batchId, error)
+    MS3 ->> MS6 : log "BatchSubmissionFailed" (ERROR)
+    alt retryCount < máximo permitido
+        MS3 -> MS3 : scheduleRetry() (reintento con backoff exponencial)
+        note right of MS3 : circuit breaker evita\nsaturar al core si está caído
+    else retryCount agotado
+        MS3 ->> MS6 : log "BatchSubmissionExhausted - requiere intervención manual" (AUDIT)
+    end
+end
+deactivate MS3
+
+MB ->> MS5 : BatchSubmittedToCore / BatchSubmissionFailed
+MS5 -> MS5 : BatchHistoryProjector.onBatchSubmittedToCore(evento)
+note right of MS5 : actualiza vista consultable\n(RF-09)
+@enduml

@@ -1,0 +1,116 @@
+@startuml MS1_TransactionIngestion
+skinparam classAttributeIconSize 0
+
+package "transaction-ingestion-service" {
+
+  enum BatchStatus {
+    UPLOADED
+    VALIDATING
+    VALIDATED
+    VALIDATION_FAILED
+  }
+
+  enum TransactionType {
+    TRANSFER
+    PAYMENT
+    DEPOSIT
+  }
+
+  enum ValidationStatus {
+    PENDING
+    VALID
+    REJECTED
+  }
+
+  class Batch <<AggregateRoot>> {
+    - id: UUID
+    - fileName: String
+    - uploadedBy: UUID
+    - uploadedAt: DateTime
+    - storageReference: String
+    - totalRecords: int
+    - checksum: String
+    - status: BatchStatus
+    + addTransaction(record: TransactionRecord): void
+    + markValidated(): void
+    + markValidationFailed(reason: String): void
+    + allTransactionsValidated(): boolean
+  }
+
+  class TransactionRecord <<Entity>> {
+    - id: UUID
+    - lineNumber: int
+    - type: TransactionType
+    - sourceAccount: AccountNumber
+    - destinationAccount: AccountNumber
+    - beneficiary: Beneficiary
+    - amount: Money
+    - fraudFlag: boolean
+    - validationStatus: ValidationStatus
+    - rejectionReason: String
+    - createdAt: DateTime
+    + markValid(): void
+    + reject(reason: String): void
+  }
+
+  class Money <<ValueObject>> {
+    - amount: BigDecimal
+    - currency: String
+    + exceeds(limit: Money): boolean
+    + isPositive(): boolean
+  }
+
+  class AccountNumber <<ValueObject>> {
+    - value: String
+  }
+
+  class Beneficiary <<ValueObject>> {
+    - name: String
+    - email: String
+  }
+
+  class BusinessRuleLimits <<ValueObject>> {
+    - maxAmountPerType: Map
+    - dailyLimit: Money
+  }
+
+  class TransactionValidationService <<DomainService>> {
+    + validate(record: TransactionRecord, limits: BusinessRuleLimits): ValidationResult
+  }
+
+  class ValidationResult <<ValueObject>> {
+    - valid: boolean
+    - reason: String
+  }
+
+  interface BatchRepository <<Repository>> {
+    + save(batch: Batch): void
+    + findById(id: UUID): Batch
+  }
+
+  interface IAccountVerificationClient <<Interface>> {
+    + isAccountValid(account: AccountNumber): boolean
+    + getAvailableBalance(account: AccountNumber): Money
+  }
+
+  interface IFileStorageClient <<Interface>> {
+    + store(fileContent: byte[], fileName: String): String
+  }
+
+  interface IEventPublisher <<Interface>> {
+    + publish(eventName: String, payload: Object): void
+  }
+
+  Batch "1" *-- "many" TransactionRecord : contiene
+  TransactionRecord "1" -- "1" Money : monto
+  TransactionRecord "1" -- "2" AccountNumber : origen/destino
+  TransactionRecord "1" -- "1" Beneficiary : beneficiario
+
+  TransactionValidationService ..> TransactionRecord : valida
+  TransactionValidationService ..> BusinessRuleLimits : aplica
+  TransactionValidationService ..> IAccountVerificationClient : consulta saldo/cuenta
+  TransactionValidationService ..> ValidationResult : produce
+  Batch ..> IFileStorageClient : referencia
+  BatchRepository ..> Batch : persiste
+}
+@enduml

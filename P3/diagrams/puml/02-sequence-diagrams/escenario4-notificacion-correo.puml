@@ -1,0 +1,47 @@
+@startuml Escenario4_NotificacionCorreo
+autonumber
+skinparam sequenceMessageAlign center
+
+queue "Message Broker" as MB
+participant "MS4: Notification" as MS4
+participant "MS1: Transaction\nIngestion (API)" as MS1
+database "BD Notificaciones" as DB4
+participant "Proveedor de\nCorreo (externo)" as Mail
+participant "MS6: Logging\nCentralizado" as MS6
+participant "MS5: History" as MS5
+
+MB ->> MS4 : evento BatchApproved(batchId)
+activate MS4
+MS4 -> MS1 : GET /batches/{batchId}/transactions?status=VALID
+activate MS1
+MS1 --> MS4 : lista de transacciones\n(beneficiario: nombre/email, monto)
+deactivate MS1
+
+loop por cada beneficiario del lote
+    MS4 -> DB4 : existsByBatchAndEmail(batchId, email)?
+    alt ya notificado (idempotencia)
+        DB4 --> MS4 : true
+        MS4 -> MS4 : omitir (evita duplicado)
+    else no notificado
+        DB4 --> MS4 : false
+        MS4 -> MS4 : ITemplateRenderer.render\n("transaccion_en_proceso", data)
+        MS4 -> Mail : send(to, subject, body)
+        alt envío exitoso
+            Mail --> MS4 : 200 OK
+            MS4 -> DB4 : INSERT NotificationRecord(status=SENT)
+            MS4 ->> MS6 : log "NotificationSent"
+        else fallo de envío
+            Mail --> MS4 : error
+            MS4 -> DB4 : INSERT NotificationRecord(status=FAILED, retryCount+1)
+            MS4 ->> MS6 : log "NotificationFailed" (ERROR)
+            MS4 -> MS4 : programar reintento
+        end
+    end
+end
+
+MS4 ->> MB : publish NotificationBatchProcessed(batchId, enviados, fallidos)
+deactivate MS4
+MB ->> MS5 : NotificationBatchProcessed
+MS5 -> MS5 : BatchHistoryProjector.onNotificationSent(evento)
+note right of MS5 : cierra la línea de tiempo\nconsultable del lote (RF-09)
+@enduml

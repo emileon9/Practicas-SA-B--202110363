@@ -1,0 +1,47 @@
+@startuml FlujoAprobacion_MakerCheckerAuthorizer
+[*] --> PENDING_MAKER : BatchValidated\n(evento automático desde MS1)
+
+state PENDING_MAKER : Espera envío formal del Maker
+state PENDING_CHECKER : Espera revisión del Checker
+state PENDING_AUTHORIZER : Espera revisión del Authorizer
+state APPROVED <<end>>
+state REJECTED <<end>>
+
+PENDING_MAKER --> PENDING_CHECKER : maker_submit\n[rol=MAKER, permiso OK]
+PENDING_MAKER --> REJECTED : maker_reject\n[rol=MAKER, permiso OK]
+
+PENDING_CHECKER --> PENDING_AUTHORIZER : checker_approve\n[rol=CHECKER, permiso OK,\nuserId ≠ maker]
+PENDING_CHECKER --> REJECTED : checker_reject\n[rol=CHECKER, permiso OK,\nuserId ≠ maker]
+
+PENDING_AUTHORIZER --> APPROVED : authorizer_approve\n[rol=AUTHORIZER, permiso OK,\nuserId ≠ maker, userId ≠ checker]
+PENDING_AUTHORIZER --> REJECTED : authorizer_reject\n[rol=AUTHORIZER, permiso OK,\nuserId ≠ maker, userId ≠ checker]
+
+APPROVED --> [*] : publica BatchApproved\n(dispara MS3 y MS4)
+REJECTED --> [*] : publica BatchRejected\n(fin del ciclo — requiere nuevo lote)
+
+note right of APPROVED
+  Estado terminal e inmutable.
+  Único estado que habilita el envío
+  al core bancario (RN-06).
+  El envío en sí es una máquina de
+  estados independiente en MS3
+  (CoreSubmission), correlacionada
+  por batchId, no acoplada a este estado.
+end note
+
+note right of REJECTED
+  Estado terminal e inmutable.
+  No existe transición de "reapertura":
+  para reintentar se debe cargar un
+  nuevo Batch (nuevo CSV, nuevo
+  ApprovalRequest completo).
+end note
+
+note left of PENDING_CHECKER
+  Toda transición valida, antes de
+  persistir: token OAuth (12h),
+  permiso vía P2, y la regla de
+  segregación de funciones propia
+  de MS2 (no delegable a P2).
+end note
+@enduml

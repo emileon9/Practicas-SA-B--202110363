@@ -1,0 +1,78 @@
+@startuml MS5_HistoryQuery
+skinparam classAttributeIconSize 0
+
+package "history-query-service" {
+
+  enum BatchLifecycleStatus {
+    UPLOADED
+    VALIDATED
+    VALIDATION_FAILED
+    PENDING_APPROVAL
+    APPROVED
+    REJECTED
+    SENT_TO_CORE
+    SUBMISSION_FAILED
+  }
+
+  class BatchHistoryView <<ReadModel>> {
+    - id: UUID
+    - fileName: String
+    - uploadedBy: UUID
+    - uploadedAt: DateTime
+    - totalRecords: int
+    - totalAmount: Money
+    - currentStatus: BatchLifecycleStatus
+    - storageReference: String
+    - lastUpdatedAt: DateTime
+  }
+
+  class BatchTimelineEvent <<ReadModel>> {
+    - id: UUID
+    - eventType: String
+    - occurredAt: DateTime
+    - payloadSummary: Map
+  }
+
+  class TransactionHistoryView <<ReadModel>> {
+    - id: UUID
+    - transactionRef: UUID
+    - type: String
+    - amount: Money
+    - currency: String
+    - maskedAccount: String
+    - finalStatus: String
+  }
+
+  class Money <<ValueObject>> {
+    - amount: BigDecimal
+    - currency: String
+  }
+
+  class BatchHistoryProjector <<ApplicationService>> {
+    + onBatchUploaded(event: Object): void
+    + onBatchValidated(event: Object): void
+    + onApprovalStepCompleted(event: Object): void
+    + onBatchApproved(event: Object): void
+    + onBatchSubmittedToCore(event: Object): void
+    + onNotificationSent(event: Object): void
+  }
+
+  interface BatchHistoryRepository <<Repository>> {
+    + save(view: BatchHistoryView): void
+    + findById(batchId: UUID): BatchHistoryView
+    + search(filters: Map): List
+  }
+
+  interface IFileDownloadProxy <<Interface>> {
+    + getDownloadUrl(storageReference: String): String
+  }
+
+  BatchHistoryView "1" *-- "many" BatchTimelineEvent : registra
+  BatchHistoryView "1" *-- "many" TransactionHistoryView : detalla
+  TransactionHistoryView "1" -- "1" Money : monto
+
+  BatchHistoryProjector ..> BatchHistoryRepository : actualiza
+  BatchHistoryProjector ..> BatchHistoryView : proyecta
+  BatchHistoryRepository ..> IFileDownloadProxy : resuelve descarga
+}
+@enduml

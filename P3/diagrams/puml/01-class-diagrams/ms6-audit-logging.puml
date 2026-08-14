@@ -1,0 +1,54 @@
+@startuml MS6_AuditLogging
+skinparam classAttributeIconSize 0
+
+package "audit-logging-service" {
+
+  enum LogSeverity {
+    INFO
+    WARN
+    ERROR
+    AUDIT
+  }
+
+  class LogEntry <<Entity>> {
+    - id: long
+    - correlationId: UUID
+    - serviceName: String
+    - eventType: String
+    - userId: UUID
+    - severity: LogSeverity
+    - message: String
+    - metadata: Map
+    - occurredAt: DateTime
+  }
+
+  class RedactionPolicy <<DomainService>> {
+    + redact(rawPayload: Map): Map
+  }
+
+  class LogIngestionService <<ApplicationService>> {
+    + ingest(rawEvent: Object): void
+  }
+
+  class AuditQueryService <<ApplicationService>> {
+    + findByCorrelationId(correlationId: UUID): List
+    + search(filters: Map): List
+  }
+
+  interface LogEntryRepository <<Repository>> {
+    + save(entry: LogEntry): void
+    + findByCorrelationId(correlationId: UUID): List
+    + search(filters: Map): List
+  }
+
+  interface IEventSubscriber <<Interface>> {
+    + onMessage(rawEvent: Object): void
+  }
+
+  LogIngestionService ..|> IEventSubscriber
+  LogIngestionService ..> RedactionPolicy : aplica antes de persistir
+  LogIngestionService ..> LogEntryRepository : persiste
+  LogIngestionService ..> LogEntry : crea
+  AuditQueryService ..> LogEntryRepository : consulta
+}
+@enduml

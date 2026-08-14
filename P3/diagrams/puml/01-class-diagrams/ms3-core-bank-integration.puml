@@ -1,0 +1,78 @@
+@startuml MS3_CoreBankIntegration
+skinparam classAttributeIconSize 0
+
+package "core-bank-integration-service" {
+
+  enum SubmissionStatus {
+    PENDING
+    SENT
+    ACKED
+    FAILED
+  }
+
+  enum CoreTransactionStatus {
+    PENDING
+    CONFIRMED
+    REJECTED
+  }
+
+  class CoreSubmission <<AggregateRoot>> {
+    - id: UUID
+    - batchId: UUID
+    - submittedAt: DateTime
+    - coreReferenceId: String
+    - status: SubmissionStatus
+    - retryCount: int
+    - lastError: String
+    + markSent(reference: String): void
+    + markFailed(error: String): void
+    + scheduleRetry(): void
+  }
+
+  class CoreSubmissionDetail <<Entity>> {
+    - id: UUID
+    - transactionRef: UUID
+    - sourceAccount: String
+    - destinationAccount: String
+    - amount: Money
+    - coreStatus: CoreTransactionStatus
+  }
+
+  class Money <<ValueObject>> {
+    - amount: BigDecimal
+    - currency: String
+  }
+
+  class CoreSubmissionOrchestrator <<ApplicationService>> {
+    + handleBatchApproved(batchId: UUID, transactions: List): void
+    + retryFailedSubmission(submissionId: UUID): void
+  }
+
+  interface CoreSubmissionRepository <<Repository>> {
+    + save(submission: CoreSubmission): void
+    + findByBatchId(batchId: UUID): CoreSubmission
+  }
+
+  interface ICoreBankGateway <<Interface>> {
+    + submit(submission: CoreSubmission): CoreBankResponse
+  }
+
+  class CoreBankResponse <<ValueObject>> {
+    - accepted: boolean
+    - referenceId: String
+    - errorMessage: String
+  }
+
+  interface IEventPublisher <<Interface>> {
+    + publish(eventName: String, payload: Object): void
+  }
+
+  CoreSubmission "1" *-- "many" CoreSubmissionDetail : agrupa
+  CoreSubmissionDetail "1" -- "1" Money : monto
+
+  CoreSubmissionOrchestrator ..> CoreSubmissionRepository : usa
+  CoreSubmissionOrchestrator ..> ICoreBankGateway : envía
+  CoreSubmissionOrchestrator ..> IEventPublisher : publica BatchSubmittedToCore
+  ICoreBankGateway ..> CoreBankResponse : retorna
+}
+@enduml

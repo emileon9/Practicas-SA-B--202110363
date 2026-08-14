@@ -1,0 +1,129 @@
+@startuml Escenario2_FlujoAprobacion
+autonumber
+skinparam sequenceMessageAlign center
+
+actor Maker
+actor Checker
+actor Authorizer
+participant "API Gateway" as GW
+participant "OAuth Corporativo" as OAuth
+participant "Módulo Autorización (P2)" as P2
+participant "MS2: Approval\nWorkflow" as MS2
+database "BD Aprobación" as DB2
+queue "Message Broker" as MB
+participant "MS6: Logging\nCentralizado" as MS6
+
+== Creación automática de la solicitud (evento del Escenario 1) ==
+MB ->> MS2 : evento BatchValidated(batchId, totalAmount)
+activate MS2
+MS2 -> DB2 : INSERT ApprovalRequest(status=PENDING_MAKER, currentStep=0)
+MS2 ->> MS6 : log "ApprovalRequestCreated"
+deactivate MS2
+
+== Paso 1 (punto 3): Maker envía el lote a aprobación ==
+Maker -> GW : POST /approvals/{batchId}/steps {role:MAKER, decision:APPROVED}
+activate GW
+GW -> OAuth : validar token
+OAuth --> GW : válido (userId=U1)
+GW -> P2 : hasPermission(U1, MAKER, "submit_batch")
+P2 --> GW : permitido
+GW -> MS2 : forward decisión (userId=U1)
+activate MS2
+MS2 -> DB2 : SELECT ApprovalRequest WHERE batchId
+MS2 -> MS2 : SegregationOfDutiesPolicy.canUserApprove(U1, MAKER)
+MS2 -> DB2 : INSERT ApprovalStep(step=1, role=MAKER, decision=APPROVED)
+MS2 -> DB2 : UPDATE ApprovalRequest(status=PENDING_CHECKER, currentStep=1)
+MS2 ->> MB : publish ApprovalStepCompleted(step=1)
+MS2 ->> MS6 : log "StepApproved: MAKER por U1"
+MS2 --> GW : 200 OK {status:PENDING_CHECKER}
+deactivate MS2
+GW --> Maker : 200 OK
+deactivate GW
+
+== Paso 2 (puntos 4-5): Checker revisa y decide ==
+Checker -> GW : GET /approvals/{batchId}
+GW -> OAuth : validar token
+GW -> P2 : hasPermission(U2, CHECKER, "view_approval")
+GW -> MS2 : forward consulta
+MS2 -> DB2 : SELECT detalle
+MS2 --> GW : detalle del lote
+GW --> Checker : 200 OK
+
+Checker -> GW : POST /approvals/{batchId}/steps {role:CHECKER, decision}
+activate GW
+GW -> OAuth : validar token
+OAuth --> GW : válido (userId=U2)
+GW -> P2 : hasPermission(U2, CHECKER, "review_batch")
+P2 --> GW : permitido
+GW -> MS2 : forward decisión (userId=U2)
+activate MS2
+MS2 -> MS2 : SegregationOfDutiesPolicy.canUserApprove(U2, CHECKER)
+alt U2 ya aprobó como MAKER (RN-05)
+    MS2 --> GW : 409 Conflict "usuario ya participó"
+    GW --> Checker : 409 Conflict
+    MS2 ->> MS6 : log "SegregationOfDutiesViolation" (WARN)
+else segregación válida
+    alt decision == REJECTED
+        MS2 -> DB2 : INSERT ApprovalStep(step=2, role=CHECKER, decision=REJECTED)
+        MS2 -> DB2 : UPDATE ApprovalRequest(status=REJECTED, completedAt=now)
+        MS2 ->> MB : publish BatchRejected(batchId, reason)
+        MS2 ->> MS6 : log "BatchRejected por CHECKER"
+        MS2 --> GW : 200 OK {status:REJECTED}
+    else decision == APPROVED
+        MS2 -> DB2 : INSERT ApprovalStep(step=2, role=CHECKER, decision=APPROVED)
+        MS2 -> DB2 : UPDATE ApprovalRequest(status=PENDING_AUTHORIZER, currentStep=2)
+        MS2 ->> MB : publish ApprovalStepCompleted(step=2)
+        MS2 ->> MS6 : log "StepApproved: CHECKER por U2"
+        MS2 --> GW : 200 OK {status:PENDING_AUTHORIZER}
+    end
+end
+GW --> Checker : respuesta
+deactivate MS2
+deactivate GW
+
+== Paso 3 (puntos 6-7-8): Authorizer revisa y aprueba/rechaza ==
+Authorizer -> GW : GET /approvals/{batchId}
+GW -> OAuth : validar token
+GW -> P2 : hasPermission(U3, AUTHORIZER, "view_approval")
+GW -> MS2 : forward consulta
+MS2 --> GW : detalle del lote
+GW --> Authorizer : 200 OK
+
+Authorizer -> GW : POST /approvals/{batchId}/steps {role:AUTHORIZER, decision}
+activate GW
+GW -> OAuth : validar token
+OAuth --> GW : válido (userId=U3)
+GW -> P2 : hasPermission(U3, AUTHORIZER, "authorize_batch")
+P2 --> GW : permitido
+GW -> MS2 : forward decisión (userId=U3)
+activate MS2
+MS2 -> MS2 : SegregationOfDutiesPolicy.canUserApprove(U3, AUTHORIZER)
+alt U3 ya participó antes (RN-05)
+    MS2 --> GW : 409 Conflict
+    GW --> Authorizer : 409 Conflict
+    MS2 ->> MS6 : log "SegregationOfDutiesViolation" (WARN)
+else segregación válida
+    alt decision == REJECTED
+        MS2 -> DB2 : INSERT ApprovalStep(step=3, role=AUTHORIZER, decision=REJECTED)
+        MS2 -> DB2 : UPDATE ApprovalRequest(status=REJECTED, completedAt=now)
+        MS2 ->> MB : publish BatchRejected(batchId, reason)
+        MS2 ->> MS6 : log "BatchRejected por AUTHORIZER"
+        MS2 --> GW : 200 OK {status:REJECTED}
+    else decision == APPROVED (tercera y última aprobación)
+        MS2 -> DB2 : INSERT ApprovalStep(step=3, role=AUTHORIZER, decision=APPROVED)
+        MS2 -> DB2 : UPDATE ApprovalRequest(status=APPROVED, completedAt=now)
+        MS2 ->> MB : publish BatchApproved(batchId, totalAmount)
+        MS2 ->> MS6 : log "BatchApproved - flujo de 3 pasos completo (AUDIT)"
+        MS2 --> GW : 200 OK {status:APPROVED}
+        note over MB
+          Fan-out asíncrono de BatchApproved:
+          -> MS3 Core Bank Integration (Escenario 3)
+          -> MS4 Notification (Escenario 4)
+          -> MS5 History (actualiza vista consultable)
+        end note
+    end
+end
+GW --> Authorizer : respuesta
+deactivate MS2
+deactivate GW
+@enduml

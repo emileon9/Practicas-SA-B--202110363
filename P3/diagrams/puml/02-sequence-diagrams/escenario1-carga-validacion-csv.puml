@@ -1,0 +1,77 @@
+@startuml Escenario1_CargaValidacionCSV
+autonumber
+skinparam sequenceMessageAlign center
+
+actor Maker
+participant "API Gateway" as GW
+participant "OAuth Corporativo" as OAuth
+participant "Módulo Autorización (P2)" as P2
+participant "MS1: Transaction\nIngestion" as MS1
+participant "Almacenamiento\n(Cloud/FTP)" as Storage
+database "BD Ingesta" as DB1
+participant "API Cuentas/Saldo\n(externo - supuesto)" as AccAPI
+queue "Message Broker" as MB
+participant "MS6: Logging\nCentralizado" as MS6
+
+Maker -> GW : POST /batches (archivo CSV) (Bearer token)
+activate GW
+GW -> OAuth : validar token OAuth
+alt token inválido o expirado
+    OAuth --> GW : 401 Unauthorized
+    GW --> Maker : 401 Unauthorized
+    GW ->> MS6 : log "AuthenticationFailed" (WARN)
+else token válido
+    OAuth --> GW : válido (userId=U1, exp=12h)
+    GW -> P2 : hasPermission(U1, MAKER, "upload_batch")
+    alt sin permiso
+        P2 --> GW : denegado
+        GW --> Maker : 403 Forbidden
+        GW ->> MS6 : log "AccessDenied" (WARN)
+    else con permiso
+        P2 --> GW : permitido
+        GW -> MS1 : forward POST /batches (userId=U1, correlationId)
+        activate MS1
+        MS1 -> DB1 : SELECT Batch WHERE checksum
+        alt checksum ya existe (carga duplicada)
+            MS1 --> GW : 409 Conflict "Batch duplicado"
+            GW --> Maker : 409 Conflict
+            MS1 ->> MS6 : log "DuplicateBatchRejected" (WARN)
+        else archivo nuevo
+            MS1 -> Storage : store(fileContent)
+            Storage --> MS1 : storageReference
+            MS1 -> DB1 : INSERT Batch(status=UPLOADED)
+            MS1 -> DB1 : INSERT TransactionRecord[] (status=PENDING)
+            MS1 ->> MB : publish BatchUploaded(batchId)
+            MS1 ->> MS6 : log "BatchUploaded"
+            MS1 --> GW : 202 Accepted {batchId, status=UPLOADED}
+            GW --> Maker : 202 Accepted
+            note over MS1 : la validación de negocio\ncontinúa de forma asíncrona
+
+            == Validación de reglas de negocio (RN-01 a RN-04) ==
+            loop por cada TransactionRecord
+                MS1 -> AccAPI : isAccountValid(cuenta) / getAvailableBalance(cuenta)
+                AccAPI --> MS1 : resultado
+                MS1 -> MS1 : TransactionValidationService.validate()\n(saldo, límites, cuenta válida, fraude)
+                alt transacción válida
+                    MS1 -> DB1 : UPDATE TransactionRecord(status=VALID)
+                else transacción inválida
+                    MS1 -> DB1 : UPDATE TransactionRecord(status=REJECTED, reason)
+                    MS1 ->> MS6 : log "TransactionRejected" (WARN)
+                end
+            end
+
+            alt validación completada sin error de sistema
+                MS1 -> DB1 : UPDATE Batch(status=VALIDATED)
+                MS1 ->> MB : publish BatchValidated(batchId, totalAmount)
+                MS1 ->> MS6 : log "BatchValidated"
+            else fallo interno (ej. AccAPI no disponible)
+                MS1 -> DB1 : UPDATE Batch(status=VALIDATION_FAILED)
+                MS1 ->> MB : publish BatchValidationFailed(batchId, error)
+                MS1 ->> MS6 : log "BatchValidationFailed" (ERROR)
+            end
+        end
+        deactivate MS1
+    end
+end
+deactivate GW
+@enduml
