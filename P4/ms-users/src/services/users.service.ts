@@ -1,0 +1,4 @@
+// TODO(Fase 3): reemplazar por datos mock reales (id, name, email)
+export function getUsers() {
+  return [];
+}
