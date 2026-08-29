@@ -1,0 +1,40 @@
+@startuml architecture
+title Practica 4 - Arquitectura de Microservicios
+
+skinparam componentStyle rectangle
+
+actor Cliente
+
+package "Docker Compose - red practica4-net" {
+  component "API Gateway\n(Node.js + TypeScript + Express)\n:4000 (publicado al host)" as Gateway
+
+  component "ms-users\n(Node.js + TypeScript + Express)\nREST + GraphQL\n:4001" as Users
+  component "ms-products\n(Node.js + TypeScript + Express)\nREST + GraphQL\n:4002" as Products
+  component "ms-orders\n(Python + FastAPI)\nREST\n:4003" as Orders
+  component "ms-notifications\n(Python + FastAPI)\nREST\n:4004" as Notifications
+}
+
+Cliente --> Gateway : HTTP (unico punto de entrada)
+
+Gateway --> Users : /api/users/*  (proxy HTTP)
+Gateway --> Products : /api/products/*  (proxy HTTP)
+Gateway --> Orders : /api/orders/*  (proxy HTTP)
+Gateway --> Notifications : /api/notifications/*  (proxy HTTP)
+
+note right of Gateway
+  No contiene logica de negocio.
+  Middleware de autenticacion preparado
+  (stub) para integrar la Practica 2.
+end note
+
+note bottom of Users
+  Datos mock en memoria.
+  No hay base de datos.
+end note
+
+note bottom of Orders
+  Datos mock en memoria.
+  No hay base de datos.
+end note
+
+@enduml

@@ -1,0 +1,80 @@
+services:
+  ms-users:
+    build: ./ms-users
+    environment:
+      - PORT=4001
+    networks:
+      - practica4-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4001/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  ms-products:
+    build: ./ms-products
+    environment:
+      - PORT=4002
+    networks:
+      - practica4-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4002/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  ms-orders:
+    build: ./ms-orders
+    environment:
+      - PORT=4003
+    networks:
+      - practica4-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4003/health')\" || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  ms-notifications:
+    build: ./ms-notifications
+    environment:
+      - PORT=4004
+    networks:
+      - practica4-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4004/health')\" || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  gateway:
+    build: ./gateway
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - USERS_SERVICE_URL=http://ms-users:4001
+      - PRODUCTS_SERVICE_URL=http://ms-products:4002
+      - ORDERS_SERVICE_URL=http://ms-orders:4003
+      - NOTIFICATIONS_SERVICE_URL=http://ms-notifications:4004
+      # TODO(P2-integration): URL real del servicio de autenticacion de la Practica 2
+      - AUTH_SERVICE_URL=
+    depends_on:
+      ms-users:
+        condition: service_healthy
+      ms-products:
+        condition: service_healthy
+      ms-orders:
+        condition: service_healthy
+      ms-notifications:
+        condition: service_healthy
+    networks:
+      - practica4-net
+
+networks:
+  practica4-net:
+    driver: bridge

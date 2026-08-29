@@ -1,0 +1,29 @@
+%% MS3 - core-bank-integration-service
+%% BD propia: PostgreSQL "BD Core Submission"
+%% Ver: ../puml/01-class-diagrams/ms3-core-bank-integration.puml (clases)
+%%      ../puml/02-sequence-diagrams/escenario3-envio-core-bancario.puml (uso)
+%% batch_id y transaction_ref son claves de correlación hacia MS1/MS2, NO son FK.
+%% UNIQUE(batch_id) en CORE_SUBMISSION garantiza idempotencia del envío al core.
+%% source_account/destination_account/amount son copias efímeras obtenidas
+%% vía API de MS1 al momento de construir el envío (no se sincronizan luego).
+
+erDiagram
+    CORE_SUBMISSION ||--o{ CORE_SUBMISSION_DETAIL : "agrupa"
+    CORE_SUBMISSION {
+        uuid id PK
+        uuid batch_id "correlación a MS1/MS2 - NO es FK"
+        timestamp submitted_at
+        varchar core_reference_id "ack del core bancario"
+        varchar status "PENDING|SENT|ACKED|FAILED"
+        int retry_count
+        varchar last_error
+    }
+    CORE_SUBMISSION_DETAIL {
+        uuid id PK
+        uuid core_submission_id FK
+        uuid transaction_ref "correlación a MS1 - NO es FK"
+        varchar source_account "sensible - copia efímera"
+        varchar destination_account "sensible - copia efímera"
+        decimal amount "sensible - copia efímera"
+        varchar core_status "PENDING|CONFIRMED|REJECTED"
+    }

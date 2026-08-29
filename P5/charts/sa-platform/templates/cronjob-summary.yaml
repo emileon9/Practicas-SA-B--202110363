@@ -1,0 +1,94 @@
+{{/*
+CronJob 2 (secciones D + H): cada 10 minutos calcula el resumen de
+ejecuciones por hora a partir de lo insertado por el CronJob 1, y lo
+publica (productor) en la cola durable de RabbitMQ que consume
+ms-notifications. ServiceAccount dedicado con Role de minimo privilegio.
+*/}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cronjob-summary-sa
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cronjob-summary-role
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["sa-platform-config"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cronjob-summary-rolebinding
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cronjob-summary-role
+subjects:
+  - kind: ServiceAccount
+    name: cronjob-summary-sa
+    namespace: {{ include "sa-platform.namespace" . }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-summary
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronJobs.summary.schedule | default "*/10 * * * *" | quote }}
+  concurrencyPolicy: {{ .Values.cronJobs.summary.concurrencyPolicy | default "Forbid" }}
+  successfulJobsHistoryLimit: {{ .Values.cronJobs.summary.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.cronJobs.summary.failedJobsHistoryLimit | default 3 }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.cronJobs.summary.backoffLimit | default 2 }}
+      template:
+        metadata:
+          labels:
+            {{- include "sa-platform.labels" . | nindent 12 }}
+            app: cronjob-summary
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: cronjob-summary-sa
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+          containers:
+            - name: cronjob-summary
+              image: "{{ required "cronJobs.summary.image.repository es obligatorio" .Values.cronJobs.summary.image.repository }}:{{ .Values.cronJobs.summary.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+              envFrom:
+                - configMapRef:
+                    name: sa-platform-config
+                - secretRef:
+                    name: {{ include "sa-platform.dbSecretName" . }}
+                - secretRef:
+                    name: {{ include "sa-platform.brokerSecretName" . }}
+              securityContext:
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                {{- toYaml .Values.cronJobs.summary.resources | nindent 16 }}
+          volumes:
+            - name: tmp
+              emptyDir: {}

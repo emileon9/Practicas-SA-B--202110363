@@ -1,0 +1,30 @@
+# Valores por defecto del subchart. El chart padre (sa-platform) los
+# sobrescribe con el bloque "gateway:" de sus values.yaml/values-*.yaml.
+image:
+  repository: sa-platform/gateway
+  tag: ""
+containerPort: 4000
+replicaCount: 2
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 250m, memory: 128Mi}
+probes:
+  startup: {periodSeconds: 5, failureThreshold: 12}
+  liveness: {initialDelaySeconds: 5, periodSeconds: 10, failureThreshold: 3}
+  readiness: {initialDelaySeconds: 2, periodSeconds: 5, failureThreshold: 3}
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+needsDbSecret: false
+needsBrokerSecret: false
+extraEnv:
+  - name: USERS_SERVICE_URL
+    value: "http://ms-users:4001"
+  - name: PRODUCTS_SERVICE_URL
+    value: "http://ms-products:4002"
+  - name: ORDERS_SERVICE_URL
+    value: "http://ms-orders:4003"
+  - name: NOTIFICATIONS_SERVICE_URL
+    value: "http://ms-notifications:4004"

@@ -1,0 +1,89 @@
+{
+  "info": {
+    "name": "Practica 4 - Sistema de Gestion de Pedidos",
+    "description": "Coleccion de contratos REST y GraphQL, todo a traves del API Gateway (localhost:4000).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gatewayUrl", "value": "http://localhost:4000" }
+  ],
+  "item": [
+    {
+      "name": "Gateway - Health",
+      "request": {
+        "method": "GET",
+        "url": "{{gatewayUrl}}/health"
+      }
+    },
+    {
+      "name": "Users - Health",
+      "request": {
+        "method": "GET",
+        "url": "{{gatewayUrl}}/api/users/health"
+      }
+    },
+    {
+      "name": "Products - Health",
+      "request": {
+        "method": "GET",
+        "url": "{{gatewayUrl}}/api/products/health"
+      }
+    },
+    {
+      "name": "Orders - Health",
+      "request": {
+        "method": "GET",
+        "url": "{{gatewayUrl}}/api/orders/health"
+      }
+    },
+    {
+      "name": "Notifications - Health",
+      "request": {
+        "method": "GET",
+        "url": "{{gatewayUrl}}/api/notifications/health"
+      }
+    },
+    {
+      "name": "Orders - Lista de pedidos",
+      "request": {
+        "method": "GET",
+        "url": "{{gatewayUrl}}/api/orders/orders"
+      }
+    },
+    {
+      "name": "Notifications - Lista de notificaciones",
+      "request": {
+        "method": "GET",
+        "url": "{{gatewayUrl}}/api/notifications/notifications"
+      }
+    },
+    {
+      "name": "Users - GraphQL (query users)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{gatewayUrl}}/api/users/graphql",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"query\":\"query { users { id name email } }\"}"
+        }
+      }
+    },
+    {
+      "name": "Products - GraphQL (query products)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{gatewayUrl}}/api/products/graphql",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"query\":\"query { products { id name price } }\"}"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{{/*
+CronJob 1 (seccion H): cada 2 minutos inserta en PostgreSQL la fecha/hora
+GMT-6 de ejecucion y el carne del estudiante. ServiceAccount dedicado
+(prohibido el default) con Role de minimo privilegio.
+*/}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cronjob-heartbeat-sa
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cronjob-heartbeat-role
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["sa-platform-config"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cronjob-heartbeat-rolebinding
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cronjob-heartbeat-role
+subjects:
+  - kind: ServiceAccount
+    name: cronjob-heartbeat-sa
+    namespace: {{ include "sa-platform.namespace" . }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-heartbeat
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronJobs.heartbeat.schedule | default "*/2 * * * *" | quote }}
+  concurrencyPolicy: {{ .Values.cronJobs.heartbeat.concurrencyPolicy | default "Forbid" }}
+  successfulJobsHistoryLimit: {{ .Values.cronJobs.heartbeat.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.cronJobs.heartbeat.failedJobsHistoryLimit | default 3 }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.cronJobs.heartbeat.backoffLimit | default 2 }}
+      template:
+        metadata:
+          labels:
+            {{- include "sa-platform.labels" . | nindent 12 }}
+            app: cronjob-heartbeat
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: cronjob-heartbeat-sa
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+          containers:
+            - name: cronjob-heartbeat
+              image: "{{ required "cronJobs.heartbeat.image.repository es obligatorio" .Values.cronJobs.heartbeat.image.repository }}:{{ .Values.cronJobs.heartbeat.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+              envFrom:
+                - configMapRef:
+                    name: sa-platform-config
+                - secretRef:
+                    name: {{ include "sa-platform.dbSecretName" . }}
+              securityContext:
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                {{- toYaml .Values.cronJobs.heartbeat.resources | nindent 16 }}
+          volumes:
+            - name: tmp
+              emptyDir: {}

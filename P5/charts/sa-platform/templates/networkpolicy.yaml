@@ -1,0 +1,122 @@
+{{/*
+Aislamiento de red (seccion E del enunciado):
+  - Solo el Ingress Controller puede alcanzar al gateway.
+  - Solo el gateway puede alcanzar a cada microservicio.
+  - Solo ms-notifications y los CronJobs autorizados pueden alcanzar a
+    PostgreSQL y RabbitMQ.
+Cada policy usa policyTypes: [Ingress] unicamente: no se restringe egress,
+asi que DNS y las conexiones salientes de cada pod siguen funcionando sin
+necesidad de una policy adicional para kube-dns.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+---
+# Solo el Ingress Controller (namespace aparte) puede hablarle al gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-gateway
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace | default "ingress-nginx" }}
+      ports:
+        - port: {{ .Values.gateway.containerPort }}
+          protocol: TCP
+---
+{{/* Solo el gateway puede hablarle a cada microservicio interno. */}}
+{{- range $name, $svc := (dict "ms-users" (index $.Values "ms-users") "ms-products" (index $.Values "ms-products") "ms-orders" (index $.Values "ms-orders") "ms-notifications" (index $.Values "ms-notifications")) }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-{{ $name }}
+  namespace: {{ include "sa-platform.namespace" $ }}
+  labels:
+    {{- include "sa-platform.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ $name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: gateway
+      ports:
+        - port: {{ $svc.containerPort }}
+          protocol: TCP
+---
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+# Solo ms-notifications y los CronJobs pueden hablarle a PostgreSQL.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-consumers-to-postgresql
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - ms-notifications
+                  - cronjob-heartbeat
+                  - cronjob-summary
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+{{- end }}
+{{- if .Values.rabbitmq.enabled }}
+# Solo ms-notifications (consumidor) y cronjob-summary (productor) pueden
+# hablarle a RabbitMQ.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-consumers-to-rabbitmq
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - ms-notifications
+                  - cronjob-summary
+      ports:
+        - port: 5672
+          protocol: TCP
+{{- end }}
+{{- end }}

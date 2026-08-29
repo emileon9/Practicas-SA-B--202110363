@@ -1,0 +1,75 @@
+# Ambiente de desarrollo: menos replicas, menos recursos, tag mutable
+# "dev" y logging verboso. Se usa asi:
+#   helm install sa-platform ./sa-platform -n sa-p5 -f values-dev.yaml -f values-secrets.yaml
+global:
+  logLevel: debug
+
+gateway:
+  replicaCount: 1
+  image:
+    tag: "dev"
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 150m, memory: 96Mi}
+  hpa:
+    minReplicas: 1
+    maxReplicas: 3
+
+ms-users:
+  replicaCount: 1
+  image:
+    tag: "dev"
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 150m, memory: 96Mi}
+  hpa:
+    minReplicas: 1
+    maxReplicas: 3
+
+ms-products:
+  replicaCount: 1
+  image:
+    tag: "dev"
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 150m, memory: 96Mi}
+  hpa:
+    minReplicas: 1
+    maxReplicas: 3
+
+ms-orders:
+  replicaCount: 1
+  image:
+    tag: "dev"
+  resources:
+    requests: {cpu: 25m, memory: 48Mi}
+    limits: {cpu: 150m, memory: 128Mi}
+  hpa:
+    minReplicas: 1
+    maxReplicas: 3
+
+ms-notifications:
+  replicaCount: 1
+  image:
+    tag: "dev"
+  resources:
+    requests: {cpu: 25m, memory: 48Mi}
+    limits: {cpu: 150m, memory: 128Mi}
+  hpa:
+    minReplicas: 1
+    maxReplicas: 3
+
+postgresql:
+  primary:
+    persistence:
+      size: 512Mi
+    resources:
+      requests: {cpu: 50m, memory: 96Mi}
+      limits: {cpu: 200m, memory: 192Mi}
+
+rabbitmq:
+  persistence:
+    size: 512Mi
+  resources:
+    requests: {cpu: 50m, memory: 96Mi}
+    limits: {cpu: 200m, memory: 192Mi}

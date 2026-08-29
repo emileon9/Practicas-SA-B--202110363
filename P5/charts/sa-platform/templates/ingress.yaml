@@ -1,0 +1,34 @@
+{{/*
+Unica puerta de entrada externa al cluster: el Ingress solo enruta hacia el
+Service del API Gateway (gateway-svc, puerto .Values.gateway.containerPort).
+Ningun microservicio, la DB ni el broker se exponen aqui ni con
+NodePort/LoadBalancer (ver templates de cada subchart: todos usan ClusterIP).
+*/}}
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sa-platform-ingress
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+  {{- if .Values.ingress.annotations }}
+  annotations:
+    {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | default "nginx" }}
+  rules:
+    - host: {{ .Values.ingress.host | required "ingress.host es obligatorio" }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway-svc
+                port:
+                  number: {{ .Values.gateway.containerPort }}
+{{- end }}

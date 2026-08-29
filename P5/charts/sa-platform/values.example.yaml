@@ -1,0 +1,25 @@
+# EJEMPLO de archivo de secretos para desarrollo local.
+#
+# values.yaml deja postgresql.auth.password y rabbitmq.auth.password VACIOS
+# a proposito. Los templates templates/secrets-db.yaml y
+# templates/secrets-broker.yaml usan `required` sobre esos valores: si no se
+# suministran, `helm install`/`helm template` fallan con un mensaje claro en
+# vez de crear un Secret con contrasena vacia.
+#
+# Copia este archivo a values-secrets.yaml (que esta en .gitignore, NUNCA se
+# versiona) con contrasenas reales, y pasalo con -f en cada comando helm:
+#
+#   cp values.example.yaml values-secrets.yaml
+#   # edita values-secrets.yaml con tus propias contrasenas
+#   helm install sa-platform ./sa-platform -n sa-p5 \
+#     -f values-dev.yaml -f values-secrets.yaml
+#
+# Los valores de abajo son FICTICIOS, solo para ilustrar el formato.
+
+postgresql:
+  auth:
+    password: "changeme-db-password-123"
+
+rabbitmq:
+  auth:
+    password: "changeme-broker-password-456"

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Secretos locales de Helm - NUNCA se versiona (ver values.example.yaml)
+values-secrets.yaml
+charts/sa-platform/values-secrets.yaml
+
+# Dependencias de Helm descargadas por `helm dependency update`
+# (Chart.lock SI se versiona: fija versiones/digests para reproducibilidad)
+charts/sa-platform/charts/*.tgz
+
+# Resultados locales de pruebas de carga
+scripts/load-test/results/

@@ -1,0 +1,18 @@
+{{/* ClusterIP unicamente: este microservicio nunca se expone fuera del
+     cluster (ni NodePort ni LoadBalancer). Solo el gateway lo alcanza. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: ms-notifications
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+    {{- include "ms-notifications.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: ms-notifications
+  ports:
+    - port: {{ .Values.containerPort }}
+      targetPort: {{ .Values.containerPort }}
+      protocol: TCP

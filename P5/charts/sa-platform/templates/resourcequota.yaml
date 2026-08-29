@@ -1,0 +1,16 @@
+{{- if .Values.resourceQuota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sa-platform-quota
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+spec:
+  hard:
+    requests.cpu: {{ .Values.resourceQuota.requestsCpu | default "3" | quote }}
+    requests.memory: {{ .Values.resourceQuota.requestsMemory | default "3Gi" | quote }}
+    limits.cpu: {{ .Values.resourceQuota.limitsCpu | default "6" | quote }}
+    limits.memory: {{ .Values.resourceQuota.limitsMemory | default "6Gi" | quote }}
+    pods: {{ .Values.resourceQuota.pods | default "60" | quote }}
+{{- end }}

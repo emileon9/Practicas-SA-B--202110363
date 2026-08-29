@@ -1,0 +1,51 @@
+@startuml er
+title Practica 4 - Modelo de datos (conceptual, EN MEMORIA - sin base de datos)
+
+note as N1
+  IMPORTANTE: este proyecto NO tiene una base de datos implementada.
+  Los 4 microservicios usan arrays en memoria como datos mock
+  (ver ms-users/src/services/users.service.ts,
+       ms-products/src/services/products.service.ts,
+       ms-orders/app/services/orders_service.py,
+       ms-notifications/app/services/notifications_service.py).
+
+  Este diagrama documenta unicamente la FORMA de esos datos mock
+  (para referencia futura si se agrega persistencia real),
+  no un esquema de base de datos existente.
+end note
+
+entity "User (mock, ms-users)" as User {
+  * id : Int
+  --
+  name : String
+  email : String
+}
+
+entity "Product (mock, ms-products)" as Product {
+  * id : Int
+  --
+  name : String
+  price : Float
+}
+
+entity "Order (mock, ms-orders)" as Order {
+  * id : Int
+  --
+  userId : Int
+  product : String
+  quantity : Int
+  status : String
+}
+
+entity "Notification (mock, ms-notifications)" as Notification {
+  * id : Int
+  --
+  userId : Int
+  message : String
+  read : Boolean
+}
+
+User ||..o{ Order : "userId (referencia logica,\nno hay FK real: cada MS\nes independiente)"
+User ||..o{ Notification : "userId (referencia logica)"
+
+@enduml

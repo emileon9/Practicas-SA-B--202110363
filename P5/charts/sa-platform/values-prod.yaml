@@ -1,0 +1,74 @@
+# Ambiente "productivo" (simulado localmente): mas replicas, mas recursos,
+# tag inmutable de version y logging a nivel warn.
+global:
+  logLevel: warn
+
+gateway:
+  replicaCount: 3
+  image:
+    tag: "1.0.0"
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  hpa:
+    minReplicas: 3
+    maxReplicas: 5
+
+ms-users:
+  replicaCount: 2
+  image:
+    tag: "1.0.0"
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 400m, memory: 256Mi}
+  hpa:
+    minReplicas: 2
+    maxReplicas: 5
+
+ms-products:
+  replicaCount: 2
+  image:
+    tag: "1.0.0"
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 400m, memory: 256Mi}
+  hpa:
+    minReplicas: 2
+    maxReplicas: 5
+
+ms-orders:
+  replicaCount: 2
+  image:
+    tag: "1.0.0"
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}
+    limits: {cpu: 400m, memory: 384Mi}
+  hpa:
+    minReplicas: 2
+    maxReplicas: 5
+
+ms-notifications:
+  replicaCount: 2
+  image:
+    tag: "1.0.0"
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}
+    limits: {cpu: 400m, memory: 384Mi}
+  hpa:
+    minReplicas: 2
+    maxReplicas: 5
+
+postgresql:
+  primary:
+    persistence:
+      size: 2Gi
+    resources:
+      requests: {cpu: 200m, memory: 256Mi}
+      limits: {cpu: 500m, memory: 512Mi}
+
+rabbitmq:
+  persistence:
+    size: 2Gi
+  resources:
+    requests: {cpu: 200m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}

@@ -1,0 +1,22 @@
+%% MS4 - notification-service
+%% BD propia: PostgreSQL/documental "BD Notificaciones"
+%% Ver: ../puml/01-class-diagrams/ms4-notification.puml (clases)
+%%      ../puml/02-sequence-diagrams/escenario4-notificacion-correo.puml (uso)
+%% batch_id y transaction_ref son claves de correlación hacia MS1/MS2, NO son FK.
+%% UNIQUE(batch_id, beneficiary_email) evita notificar dos veces al mismo
+%% beneficiario ante una entrega duplicada del evento BatchApproved (broker
+%% at-least-once). Entidad plana: no requiere sub-entidades, el dominio es simple.
+
+erDiagram
+    NOTIFICATION_RECORD {
+        uuid id PK
+        uuid batch_id "correlación a MS1/MS2 - NO es FK"
+        uuid transaction_ref "correlación a MS1 - NO es FK"
+        varchar beneficiary_email "sensible - PII, copia funcional"
+        varchar beneficiary_name "sensible - PII, copia funcional"
+        varchar template_used
+        varchar status "PENDING|SENT|FAILED"
+        timestamp sent_at
+        int retry_count
+        varchar error_message
+    }

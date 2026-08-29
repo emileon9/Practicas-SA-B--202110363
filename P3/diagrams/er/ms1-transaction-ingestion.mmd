@@ -1,0 +1,35 @@
+%% MS1 - transaction-ingestion-service
+%% BD propia: PostgreSQL "BD Ingesta"
+%% Ver: ../puml/01-class-diagrams/ms1-transaction-ingestion.puml (clases)
+%%      ../puml/02-sequence-diagrams/escenario1-carga-validacion-csv.puml (uso)
+%% Sin FK hacia otras bases de datos. uploaded_by referencia a un usuario
+%% de OAuth/P2 solo como valor plano (no hay integridad referencial física).
+
+erDiagram
+    BATCH ||--o{ TRANSACTION_RECORD : "contiene"
+    BATCH {
+        uuid id PK
+        varchar file_name
+        uuid uploaded_by "id de usuario, ref. externa a OAuth/P2 - no FK"
+        timestamp uploaded_at
+        varchar storage_reference "ubicación en Cloud Storage/FTP"
+        int total_records
+        varchar checksum "detecta cargas duplicadas"
+        varchar status "UPLOADED|VALIDATING|VALIDATED|VALIDATION_FAILED"
+    }
+    TRANSACTION_RECORD {
+        uuid id PK
+        uuid batch_id FK
+        int line_number
+        varchar type "TRANSFER|PAYMENT|DEPOSIT"
+        varchar source_account "sensible"
+        varchar destination_account "sensible"
+        varchar beneficiary_name "sensible - PII"
+        varchar beneficiary_email "sensible - PII"
+        decimal amount "sensible"
+        char currency
+        boolean fraud_flag
+        varchar validation_status "PENDING|VALID|REJECTED"
+        varchar rejection_reason
+        timestamp created_at
+    }

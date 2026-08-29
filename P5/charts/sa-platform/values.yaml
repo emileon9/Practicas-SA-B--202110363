@@ -1,0 +1,254 @@
+# Valores base de la plataforma sa-platform.
+# Los archivos values-dev.yaml / values-prod.yaml solo SOBRESCRIBEN lo que
+# cambia por ambiente (replicas, recursos, tag de imagen, nivel de log).
+# values.example.yaml documenta, con valores ficticios, las claves sensibles
+# que NO estan definidas aqui (contrasenas de DB/broker).
+
+global:
+  namespace: sa-p5
+  imagePullPolicy: IfNotPresent
+  logLevel: info
+  # Zona horaria GMT-6 usada por los CronJobs para registrar fecha/hora.
+  timezone: America/Guatemala
+  # Numero de carne del estudiante, insertado por el CronJob 1.
+  # NO se hardcodea en el codigo del CronJob: viaja como variable de entorno
+  # inyectada desde este value.
+  studentCarne: "202110363"
+
+# ---------------------------------------------------------------------------
+# Ingress (unica puerta de entrada externa -> API Gateway)
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  host: sa-platform.local
+  annotations: {}
+
+# ---------------------------------------------------------------------------
+# NetworkPolicies de aislamiento (gateway -> MS -> DB/broker; nada mas)
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  # Namespace donde vive el Ingress Controller (nginx). Solo los pods de ese
+  # namespace pueden alcanzar al gateway.
+  ingressControllerNamespace: ingress-nginx
+
+# ---------------------------------------------------------------------------
+# ResourceQuota / LimitRange del namespace (pensados para un clúster local
+# con ~4GB de RAM asignados a Kubernetes, dejando margen para
+# postgresql + rabbitmq + 5 deployments con HPA hasta 5 replicas c/u)
+# ---------------------------------------------------------------------------
+resourceQuota:
+  enabled: true
+  requestsCpu: "3"
+  requestsMemory: 3Gi
+  limitsCpu: "6"
+  limitsMemory: 6Gi
+  pods: "60"
+
+limitRange:
+  enabled: true
+  defaultRequestCpu: 50m
+  defaultRequestMemory: 64Mi
+  defaultLimitCpu: 250m
+  defaultLimitMemory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Microservicios (subcharts). Cada uno define su propia imagen, probes,
+# recursos y HPA. extraEnv es una lista libre consumida con `range` en el
+# template del subchart.
+# ---------------------------------------------------------------------------
+gateway:
+  image:
+    repository: sa-platform/gateway
+    tag: "1.0.0"
+  containerPort: 4000
+  replicaCount: 2
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+  probes:
+    startup: {periodSeconds: 5, failureThreshold: 12}
+    liveness: {initialDelaySeconds: 5, periodSeconds: 10, failureThreshold: 3}
+    readiness: {initialDelaySeconds: 2, periodSeconds: 5, failureThreshold: 3}
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  needsDbSecret: false
+  needsBrokerSecret: false
+  extraEnv:
+    - name: USERS_SERVICE_URL
+      value: "http://ms-users:4001"
+    - name: PRODUCTS_SERVICE_URL
+      value: "http://ms-products:4002"
+    - name: ORDERS_SERVICE_URL
+      value: "http://ms-orders:4003"
+    - name: NOTIFICATIONS_SERVICE_URL
+      value: "http://ms-notifications:4004"
+
+ms-users:
+  image:
+    repository: sa-platform/ms-users
+    tag: "1.0.0"
+  containerPort: 4001
+  replicaCount: 2
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 200m, memory: 128Mi}
+  probes:
+    startup: {periodSeconds: 5, failureThreshold: 10}
+    liveness: {initialDelaySeconds: 5, periodSeconds: 10, failureThreshold: 3}
+    readiness: {initialDelaySeconds: 2, periodSeconds: 5, failureThreshold: 3}
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  needsDbSecret: false
+  needsBrokerSecret: false
+  extraEnv: []
+
+ms-products:
+  image:
+    repository: sa-platform/ms-products
+    tag: "1.0.0"
+  containerPort: 4002
+  replicaCount: 2
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 200m, memory: 128Mi}
+  probes:
+    startup: {periodSeconds: 5, failureThreshold: 10}
+    liveness: {initialDelaySeconds: 5, periodSeconds: 10, failureThreshold: 3}
+    readiness: {initialDelaySeconds: 2, periodSeconds: 5, failureThreshold: 3}
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  needsDbSecret: false
+  needsBrokerSecret: false
+  extraEnv: []
+
+ms-orders:
+  image:
+    repository: sa-platform/ms-orders
+    tag: "1.0.0"
+  containerPort: 4003
+  replicaCount: 2
+  resources:
+    requests: {cpu: 50m, memory: 96Mi}
+    limits: {cpu: 200m, memory: 192Mi}
+  probes:
+    startup: {periodSeconds: 5, failureThreshold: 12}
+    liveness: {initialDelaySeconds: 8, periodSeconds: 10, failureThreshold: 3}
+    readiness: {initialDelaySeconds: 3, periodSeconds: 5, failureThreshold: 3}
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  needsDbSecret: false
+  needsBrokerSecret: false
+  extraEnv: []
+
+ms-notifications:
+  image:
+    repository: sa-platform/ms-notifications
+    tag: "1.0.0"
+  containerPort: 4004
+  replicaCount: 2
+  resources:
+    requests: {cpu: 50m, memory: 96Mi}
+    limits: {cpu: 200m, memory: 192Mi}
+  probes:
+    startup: {periodSeconds: 5, failureThreshold: 12}
+    liveness: {initialDelaySeconds: 8, periodSeconds: 10, failureThreshold: 3}
+    readiness: {initialDelaySeconds: 3, periodSeconds: 5, failureThreshold: 3}
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  # ms-notifications es el consumidor del flujo asincrono: recibe el resumen
+  # publicado por el CronJob 2 y lo persiste en PostgreSQL.
+  needsDbSecret: true
+  needsBrokerSecret: true
+  broker:
+    queueName: "cronjob.summary.q"
+  extraEnv: []
+
+# ---------------------------------------------------------------------------
+# CronJobs (plantillas propias del chart padre, no subcharts)
+# ---------------------------------------------------------------------------
+cronJobs:
+  heartbeat:
+    schedule: "*/2 * * * *"
+    image:
+      repository: sa-platform/cronjob-heartbeat
+      tag: "1.0.0"
+    concurrencyPolicy: Forbid
+    backoffLimit: 2
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    resources:
+      requests: {cpu: 25m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}
+  summary:
+    schedule: "*/10 * * * *"
+    image:
+      repository: sa-platform/cronjob-summary
+      tag: "1.0.0"
+    concurrencyPolicy: Forbid
+    backoffLimit: 2
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    broker:
+      queueName: "cronjob.summary.q"
+    resources:
+      requests: {cpu: 25m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 64Mi}
+
+# ---------------------------------------------------------------------------
+# Dependencias Bitnami (StatefulSet + PVC + headless service ya incluidos
+# en ambos charts). Las contrasenas NO tienen default: values.yaml las deja
+# vacias a proposito y `required` en templates/secrets-*.yaml obliga a
+# suministrarlas con --set o un values-secrets.yaml no versionado
+# (ver values.example.yaml y docs/security.md).
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  fullnameOverride: sa-postgresql
+  auth:
+    username: sa_app
+    database: sa_platform
+    password: ""
+  architecture: standalone
+  primary:
+    persistence:
+      enabled: true
+      size: 1Gi
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {cpu: 300m, memory: 256Mi}
+  volumePermissions:
+    enabled: false
+  metrics:
+    enabled: false
+
+rabbitmq:
+  enabled: true
+  fullnameOverride: sa-rabbitmq
+  auth:
+    username: sa_app
+    password: ""
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 300m, memory: 256Mi}
+  metrics:
+    enabled: false

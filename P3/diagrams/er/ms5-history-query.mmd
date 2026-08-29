@@ -1,0 +1,42 @@
+%% MS5 - history-query-service
+%% BD propia: almacen desnormalizado orientado a lectura "BD Historial" (CQRS)
+%% Ver: ../puml/01-class-diagrams/ms5-history-query.puml (clases, BatchHistoryProjector)
+%%      ../puml/02-sequence-diagrams/escenario3-envio-core-bancario.puml
+%%      ../puml/02-sequence-diagrams/escenario4-notificacion-correo.puml
+%% id de BATCH_HISTORY_VIEW = batch_id (clave de negocio compartida con MS1/MS2,
+%% NO es FK física). masked_account guarda solo los últimos 4 dígitos: el
+%% contenido íntegro del CSV se sirve por descarga directa desde almacenamiento
+%% (storage_reference), nunca se duplica completo aquí (ver sección G del
+%% modelo de datos: "información que no debería duplicarse innecesariamente").
+
+erDiagram
+    BATCH_HISTORY_VIEW ||--o{ BATCH_TIMELINE_EVENT : "registra"
+    BATCH_HISTORY_VIEW ||--o{ TRANSACTION_HISTORY_VIEW : "detalla"
+    BATCH_HISTORY_VIEW {
+        uuid id PK "= batch_id, clave de negocio, no FK física"
+        varchar file_name
+        uuid uploaded_by
+        timestamp uploaded_at
+        int total_records
+        decimal total_amount
+        varchar current_status "vista consolidada del ciclo de vida completo"
+        varchar storage_reference "para descarga del CSV original"
+        timestamp last_updated_at
+    }
+    BATCH_TIMELINE_EVENT {
+        uuid id PK
+        uuid batch_history_id FK
+        varchar event_type "BatchUploaded|BatchValidated|BatchValidationFailed|ApprovalStepCompleted|BatchApproved|BatchRejected|BatchSubmittedToCore|BatchSubmissionFailed|NotificationBatchProcessed"
+        timestamp occurred_at
+        jsonb payload_summary
+    }
+    TRANSACTION_HISTORY_VIEW {
+        uuid id PK
+        uuid batch_history_id FK
+        uuid transaction_ref "correlación a MS1 - NO es FK"
+        varchar type
+        decimal amount
+        char currency
+        varchar masked_account "solo últimos 4 dígitos"
+        varchar final_status
+    }

@@ -1,0 +1,46 @@
+@startuml deployment
+title Practica 4 - Diagrama de Despliegue (Docker Compose)
+
+node "Host (Docker Desktop)" {
+
+  node "Contenedor: gateway" as N_gateway {
+    artifact "gateway (Node 20 alpine)\nExpress + http-proxy-middleware" as A_gateway
+  }
+
+  package "Red Docker: practica4-net (bridge)" {
+
+    node "Contenedor: ms-users" as N_users {
+      artifact "ms-users (Node 20 alpine)\nExpress + GraphQL" as A_users
+    }
+
+    node "Contenedor: ms-products" as N_products {
+      artifact "ms-products (Node 20 alpine)\nExpress + GraphQL" as A_products
+    }
+
+    node "Contenedor: ms-orders" as N_orders {
+      artifact "ms-orders (python:3.12-slim)\nFastAPI + Uvicorn" as A_orders
+    }
+
+    node "Contenedor: ms-notifications" as N_notif {
+      artifact "ms-notifications (python:3.12-slim)\nFastAPI + Uvicorn" as A_notif
+    }
+  }
+}
+
+N_gateway -down-> N_users : http://ms-users:4001
+N_gateway -down-> N_products : http://ms-products:4002
+N_gateway -down-> N_orders : http://ms-orders:4003
+N_gateway -down-> N_notif : http://ms-notifications:4004
+
+cloud "Host / Cliente externo" as Host
+Host --> N_gateway : "localhost:4000\n(unico puerto publicado)"
+
+note right of N_users
+  healthcheck: wget /health
+end note
+
+note right of N_orders
+  healthcheck: python -c urllib.request /health
+end note
+
+@enduml

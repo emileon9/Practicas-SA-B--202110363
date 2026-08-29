@@ -1,0 +1,30 @@
+%% MS2 - approval-workflow-service
+%% BD propia: PostgreSQL "BD Aprobación"
+%% Ver: ../puml/01-class-diagrams/ms2-approval-workflow.puml (clases)
+%%      ../puml/02-sequence-diagrams/escenario2-flujo-aprobacion.puml (uso)
+%%      ../puml/03-state-diagrams/flujo-aprobacion-maker-checker-authorizer.puml (estados)
+%% batch_id es clave de correlación hacia MS1, NO es FK física (BD distinta).
+%% UNIQUE(approval_request_id, user_id) aplica RN-05 (segregación de funciones)
+%% a nivel de base de datos, además de la verificación en aplicación.
+
+erDiagram
+    APPROVAL_REQUEST ||--o{ APPROVAL_STEP : "tiene"
+    APPROVAL_REQUEST {
+        uuid id PK
+        uuid batch_id "correlación a MS1 - NO es FK"
+        int current_step
+        decimal total_amount "copia denormalizada para UI, no fuente de verdad"
+        varchar status "PENDING_MAKER|PENDING_CHECKER|PENDING_AUTHORIZER|APPROVED|REJECTED"
+        timestamp created_at
+        timestamp completed_at
+    }
+    APPROVAL_STEP {
+        uuid id PK
+        uuid approval_request_id FK
+        int step_number "1-3"
+        varchar role_required "MAKER|CHECKER|AUTHORIZER"
+        uuid user_id "ref. externa a OAuth/P2 - no FK"
+        varchar decision "APPROVED|REJECTED"
+        varchar comment
+        timestamp decided_at
+    }

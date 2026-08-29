@@ -1,0 +1,16 @@
+FROM python:3.12-slim AS builder
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+FROM python:3.12-slim AS runtime
+WORKDIR /app
+RUN addgroup --system app && adduser --system --ingroup app --home /home/app app
+COPY --from=builder --chown=app:app /root/.local /home/app/.local
+COPY --chown=app:app app.py ./app.py
+ENV PATH=/home/app/.local/bin:$PATH \
+    PYTHONPATH=/home/app/.local/lib/python3.12/site-packages \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+USER app
+CMD ["python", "app.py"]

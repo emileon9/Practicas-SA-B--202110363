@@ -1,0 +1,25 @@
+# Valores por defecto del subchart. El chart padre (sa-platform) los
+# sobrescribe con el bloque "ms-notifications:" de sus values.yaml/values-*.yaml.
+image:
+  repository: sa-platform/ms-notifications
+  tag: ""
+containerPort: 4004
+replicaCount: 2
+resources:
+  requests: {cpu: 50m, memory: 96Mi}
+  limits: {cpu: 200m, memory: 192Mi}
+probes:
+  startup: {periodSeconds: 5, failureThreshold: 12}
+  liveness: {initialDelaySeconds: 8, periodSeconds: 10, failureThreshold: 3}
+  readiness: {initialDelaySeconds: 3, periodSeconds: 5, failureThreshold: 3}
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+# ms-notifications es el consumidor del flujo asincrono: necesita las
+# credenciales de PostgreSQL (para guardar el resumen) y de RabbitMQ (para
+# consumir la cola durable donde publica el CronJob 2).
+needsDbSecret: true
+needsBrokerSecret: true
+extraEnv: []

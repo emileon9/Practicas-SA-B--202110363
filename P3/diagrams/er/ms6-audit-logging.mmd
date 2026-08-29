@@ -1,0 +1,21 @@
+%% MS6 - audit-logging-service
+%% BD propia: almacen append-only orientado a búsqueda "BD Auditoría"
+%% (Elasticsearch/OpenSearch)
+%% Ver: ../puml/01-class-diagrams/ms6-audit-logging.puml (clases, RedactionPolicy)
+%% Entidad única, sin relaciones internas, indexada por correlation_id,
+%% service_name y occurred_at. "message"/"metadata" nunca contienen números
+%% de cuenta o montos en texto plano (aplicado por RedactionPolicy antes de
+%% persistir) - ver Documento de Solución Técnica, sección 4.
+
+erDiagram
+    LOG_ENTRY {
+        bigint id PK
+        uuid correlation_id "batch_id u otro id de negocio, traza el ciclo completo"
+        varchar service_name
+        varchar event_type
+        uuid user_id
+        varchar severity "INFO|WARN|ERROR|AUDIT"
+        text message "sin datos sensibles crudos - redactado antes de persistir"
+        jsonb metadata
+        timestamp occurred_at
+    }

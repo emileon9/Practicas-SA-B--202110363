@@ -1,0 +1,28 @@
+{{/*
+Configuracion NO sensible compartida por ms-notifications (consumidor del
+flujo asincrono) y ambos CronJobs. Las credenciales (contrasenas) NUNCA
+viven aqui: estan en templates/secrets-db.yaml y templates/secrets-broker.yaml.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sa-platform-config
+  namespace: {{ include "sa-platform.namespace" . }}
+  labels:
+    {{- include "sa-platform.labels" . | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.global.logLevel | default "info" | quote }}
+  TZ: {{ .Values.global.timezone | default "America/Guatemala" | quote }}
+  STUDENT_CARNE: {{ required "global.studentCarne es obligatorio (numero de carne para el CronJob 1)" .Values.global.studentCarne | quote }}
+  {{- if .Values.postgresql.enabled }}
+  DB_HOST: {{ printf "%s.%s.svc.cluster.local" .Values.postgresql.fullnameOverride (include "sa-platform.namespace" .) | quote }}
+  DB_PORT: "5432"
+  DB_NAME: {{ .Values.postgresql.auth.database | quote }}
+  DB_USER: {{ .Values.postgresql.auth.username | quote }}
+  {{- end }}
+  {{- if .Values.rabbitmq.enabled }}
+  BROKER_HOST: {{ printf "%s.%s.svc.cluster.local" .Values.rabbitmq.fullnameOverride (include "sa-platform.namespace" .) | quote }}
+  BROKER_PORT: "5672"
+  BROKER_USER: {{ .Values.rabbitmq.auth.username | quote }}
+  BROKER_SUMMARY_QUEUE: {{ .Values.cronJobs.summary.broker.queueName | default "cronjob.summary.q" | quote }}
+  {{- end }}

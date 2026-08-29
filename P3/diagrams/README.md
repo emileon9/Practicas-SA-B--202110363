@@ -64,10 +64,28 @@ Renderizado en `rendered/04-architecture/arquitectura-general.svg` / `.png`.
 
 Renderizado en `rendered/05-component-diagram/diagrama-componentes.svg` / `.png`.
 
+## 06 — Modelos ER (`er/`, formato Mermaid)
+
+| Archivo | Contenido |
+|---|---|
+| `ms1-transaction-ingestion.mmd` | `BATCH` 1—N `TRANSACTION_RECORD` |
+| `ms2-approval-workflow.mmd` | `APPROVAL_REQUEST` 1—N `APPROVAL_STEP` (con `UNIQUE(approval_request_id, user_id)` aplicando RN-05) |
+| `ms3-core-bank-integration.mmd` | `CORE_SUBMISSION` 1—N `CORE_SUBMISSION_DETAIL` |
+| `ms4-notification.mmd` | `NOTIFICATION_RECORD` (entidad plana) |
+| `ms5-history-query.mmd` | `BATCH_HISTORY_VIEW` 1—N `BATCH_TIMELINE_EVENT`, 1—N `TRANSACTION_HISTORY_VIEW` (read-model CQRS) |
+| `ms6-audit-logging.mmd` | `LOG_ENTRY` (entidad única, append-only) |
+
+Ningún modelo tiene FK hacia otra base de datos — toda referencia cruzada (`batch_id`, `transaction_ref`, `user_id`) es una clave de correlación sin integridad referencial física, resuelta por API o evento. Detalle completo (justificación de separación, integridad, datos sensibles) en la conversación de diseño del modelo de datos; los `.mmd` están comentados con referencias cruzadas a los `.puml` de clases equivalentes.
+
+## Documentación narrativa (`../docs/`)
+
+| Archivo | Contenido |
+|---|---|
+| `../docs/DOCUMENTO-SOLUCION-TECNICA.md` | Integración con P2, reglas de negocio, estrategia de almacenamiento CSV, estrategia de logging, comunicación entre servicios, propuesta de API Gateway, tecnologías y patrones justificados (criterios de rúbrica 2.2 y 2.4) |
+
 ## Pendiente
 
-- **Modelos ER** (formato Mermaid, ya diseñados en conversación, aún no organizados en archivos — ver `er/`, actualmente vacía).
-- Documento de descripción técnica de tecnologías y patrones (para el criterio 2.4 de la rúbrica).
+- Confirmar con el catedrático las ambigüedades ya señaladas en el análisis inicial de la práctica: sistema de consulta de saldo/cuenta (RN-01/RN-03, marcado `<<Assumption>>` en los diagramas), las "preguntas teóricas" (10 pts) sin definición formal, y el formato de nombre solicitado para el repositorio.
 
 ## Control de consistencia
 
