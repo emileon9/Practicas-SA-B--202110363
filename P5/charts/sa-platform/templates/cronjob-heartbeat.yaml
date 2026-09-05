@@ -66,6 +66,8 @@ spec:
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
+            runAsUser: {{ .Values.cronJobs.heartbeat.runAsUser }}
+            runAsGroup: {{ .Values.cronJobs.heartbeat.runAsGroup }}
           containers:
             - name: cronjob-heartbeat
               image: "{{ required "cronJobs.heartbeat.image.repository es obligatorio" .Values.cronJobs.heartbeat.image.repository }}:{{ .Values.cronJobs.heartbeat.image.tag | default .Chart.AppVersion }}"

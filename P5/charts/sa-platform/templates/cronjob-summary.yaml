@@ -67,6 +67,8 @@ spec:
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
+            runAsUser: {{ .Values.cronJobs.summary.runAsUser }}
+            runAsGroup: {{ .Values.cronJobs.summary.runAsGroup }}
           containers:
             - name: cronjob-summary
               image: "{{ required "cronJobs.summary.image.repository es obligatorio" .Values.cronJobs.summary.image.repository }}:{{ .Values.cronJobs.summary.image.tag | default .Chart.AppVersion }}"

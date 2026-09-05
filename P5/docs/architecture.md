@@ -5,9 +5,13 @@
 `sa-platform` empaqueta, como un unico chart de Helm, los 4 microservicios y
 el API Gateway heredados de la Practica 4, mas 3 componentes nuevos para la
 Practica 5: PostgreSQL (persistencia), RabbitMQ (mensajeria) y 2 CronJobs.
-Todo vive dentro del namespace `sa-p5`, creado por el propio chart.
+Todo vive dentro del namespace `sa-p5`, instalado con
+`helm install ... --create-namespace` (ver [deployment.md](deployment.md)
+sobre por que no se uso un template de `Namespace` propio dentro del chart).
 
 ## Diagrama
+
+Vista de flujos (sincrono/asincrono, limites de NetworkPolicy):
 
 ```mermaid
 flowchart TB

@@ -28,3 +28,6 @@ extraEnv:
     value: "http://ms-orders:4003"
   - name: NOTIFICATIONS_SERVICE_URL
     value: "http://ms-notifications:4004"
+
+runAsUser: 1000
+runAsGroup: 1000

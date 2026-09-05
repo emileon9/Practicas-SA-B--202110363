@@ -70,11 +70,23 @@ def _run() -> None:
     db_user = _env("DB_USER")
     db_password = _env("DB_PASSWORD")
 
-    db_conn = psycopg2.connect(
-        host=db_host, port=db_port, dbname=db_name,
-        user=db_user, password=db_password, connect_timeout=10,
-    )
-    _ensure_table(db_conn)
+    db_conn = None
+    while db_conn is None and not _stop_event.is_set():
+        try:
+            db_conn = psycopg2.connect(
+                host=db_host, port=db_port, dbname=db_name,
+                user=db_user, password=db_password, connect_timeout=10,
+            )
+            _ensure_table(db_conn)
+        except Exception:
+            logger.exception(
+                "No se pudo conectar a PostgreSQL (puede seguir "
+                "inicializando en el primer arranque); reintentando en 5s"
+            )
+            db_conn = None
+            time.sleep(5)
+    if db_conn is None:
+        return
 
     def on_message(channel, method, properties, body):
         try:

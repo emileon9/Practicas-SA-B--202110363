@@ -20,3 +20,6 @@ hpa:
 needsDbSecret: false
 needsBrokerSecret: false
 extraEnv: []
+
+runAsUser: 100
+runAsGroup: 101

@@ -1,6 +1,10 @@
+import logging
+
 from fastapi import FastAPI
 from app.routers import notifications
 from app.services import summary_consumer
+
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="ms-notifications")
 

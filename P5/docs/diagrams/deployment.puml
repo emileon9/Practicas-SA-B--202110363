@@ -1,0 +1,71 @@
+@startuml deployment
+!theme plain
+title sa-platform - Topologia de despliegue (namespace sa-p5)
+
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+actor "Cliente externo" as client
+
+node "namespace: ingress-nginx" as ns_ingress {
+  component "ingress-nginx-controller" as ingctrl
+}
+
+node "namespace: sa-p5" as ns_platform {
+
+  component "Ingress\nsa-platform-ingress\n(host: sa-platform.local)" as ingress
+
+  package "Deployments (HPA 1-3/1-5, PDB, RollingUpdate 0 downtime)" {
+    component "gateway" as gw
+    component "ms-users" as msu
+    component "ms-products" as msp
+    component "ms-orders" as mso
+    component "ms-notifications\n(+ consumidor RabbitMQ)" as msn
+  }
+
+  package "CronJobs" {
+    component "cronjob-heartbeat\n*/2 * * * *" as cj1
+    component "cronjob-summary\n*/10 * * * *" as cj2
+  }
+
+  package "StatefulSets + PVC (persistencia)" {
+    database "sa-postgresql\n(PVC data-sa-postgresql-0)" as pg
+    queue "sa-rabbitmq\n(PVC data-sa-rabbitmq-0)" as mq
+  }
+
+  component "ConfigMap\nsa-platform-config" as cm
+  component "Secrets\nsa-platform-db-credentials\nsa-platform-broker-credentials" as sec
+}
+
+client --> ingctrl : HTTP(S)
+ingctrl --> ingress
+ingress --> gw : unico servicio expuesto
+
+gw --> msu : NetworkPolicy: solo gateway
+gw --> msp : NetworkPolicy: solo gateway
+gw --> mso : NetworkPolicy: solo gateway
+gw --> msn : NetworkPolicy: solo gateway
+
+msn ..> pg : sincrono (SQL)
+cj1 ..> pg : INSERT execution_log
+cj2 ..> pg : SELECT resumen
+
+cj2 ==> mq : publica y retorna\n(asincrono)
+mq ==> msn : consume + ack manual\n(asincrono)
+msn --> pg : INSERT cronjob_summary
+
+cm ..> msn
+cm ..> cj1
+cm ..> cj2
+sec ..> msn
+sec ..> cj1
+sec ..> cj2
+
+note bottom of pg
+  Ningun componente interno usa
+  NodePort/LoadBalancer. Solo el
+  Ingress es alcanzable desde
+  fuera del cluster.
+end note
+
+@enduml

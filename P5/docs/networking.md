@@ -54,7 +54,23 @@ que un pod es seleccionado por al menos una policy de tipo Ingress**, y
 ninguna de las reglas de arriba autoriza, por ejemplo, `ms-users -> ms-orders`
 o un pod cualquiera -> PostgreSQL, ese trafico lateral queda bloqueado.
 
-## Evidencia del bloqueo (obligatoria)
+## Limitación de entorno verificada (importante)
+
+Se probó el bloqueo real en dos clústeres locales: Docker Desktop
+Kubernetes (sin CNI con soporte de NetworkPolicy) y
+`minikube --driver=docker --cni=calico` (Calico corriendo y activo). En
+ambos, un pod sin las etiquetas autorizadas **logró conectar** de todas
+formas — a pesar de que las policies, verificadas manualmente, seleccionan
+correctamente los pods correctos. La hipótesis más probable es que el
+dataplane de iptables de Calico, anidado dentro del driver `docker` de
+minikube sobre Windows/WSL2, no programa las reglas de filtrado
+correctamente (limitación conocida de esa combinación de virtualización
+anidada). El procedimiento de abajo es el correcto y debería bloquear el
+tráfico en un clúster con CNI compatible corriendo nativamente (Linux real,
+kind con Calico en Linux, o cualquier nube administrada). Detalle completo
+en [evidence.md](evidence.md#5-bloqueo-por-networkpolicy--limitación-de-entorno-documentada).
+
+## Evidencia del bloqueo (procedimiento correcto, ver limitación arriba)
 
 Procedimiento para demostrar que el aislamiento realmente funciona, lanzando
 un pod "atacante" sin ninguna de las etiquetas autorizadas:

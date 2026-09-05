@@ -5,5 +5,20 @@ dependencies:
 - name: rabbitmq
   repository: https://charts.bitnami.com/bitnami
   version: 16.0.14
-digest: sha256:575cce2a68d2f742a9627aa2df381c8b6125bb82486bde745adfe80bdb2144dc
-generated: "2026-08-28T21:10:15.7792449-06:00"
+- name: gateway
+  repository: ""
+  version: 1.0.0
+- name: ms-users
+  repository: ""
+  version: 1.0.0
+- name: ms-products
+  repository: ""
+  version: 1.0.0
+- name: ms-orders
+  repository: ""
+  version: 1.0.0
+- name: ms-notifications
+  repository: ""
+  version: 1.0.0
+digest: sha256:67cffec9010eafda5889e7fa2611265c9cb798fb5ac279fb8b60f8d89aafc215
+generated: "2026-08-29T00:08:22.9600297-06:00"

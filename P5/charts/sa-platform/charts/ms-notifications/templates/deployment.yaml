@@ -30,6 +30,8 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        runAsUser: {{ .Values.runAsUser }}
+        runAsGroup: {{ .Values.runAsGroup }}
       containers:
         - name: ms-notifications
           image: "{{ required "ms-notifications.image.repository es obligatorio" .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"

@@ -184,6 +184,9 @@ ms-notifications:
 # CronJobs (plantillas propias del chart padre, no subcharts)
 # ---------------------------------------------------------------------------
 cronJobs:
+  # Ambos corren sobre la misma imagen base python:3.12-slim con el usuario
+  # de sistema "app" (uid 100 / gid 101) creado en el Dockerfile - ver
+  # docs/security.md sobre por que runAsUser debe ser numerico explicito.
   heartbeat:
     schedule: "*/2 * * * *"
     image:
@@ -193,6 +196,8 @@ cronJobs:
     backoffLimit: 2
     successfulJobsHistoryLimit: 3
     failedJobsHistoryLimit: 3
+    runAsUser: 100
+    runAsGroup: 101
     resources:
       requests: {cpu: 25m, memory: 32Mi}
       limits: {cpu: 100m, memory: 64Mi}
@@ -205,6 +210,8 @@ cronJobs:
     backoffLimit: 2
     successfulJobsHistoryLimit: 3
     failedJobsHistoryLimit: 3
+    runAsUser: 100
+    runAsGroup: 101
     broker:
       queueName: "cronjob.summary.q"
     resources:
@@ -241,6 +248,13 @@ postgresql:
 rabbitmq:
   enabled: true
   fullnameOverride: sa-rabbitmq
+  # Bitnami movio la imagen "bitnami/rabbitmq" a su registro de pago
+  # (Bitnami Secure Images); el mismo tag sigue disponible gratis en el
+  # mirror congelado "bitnamilegacy". postgresql (abajo) todavia resuelve
+  # en el registro normal, por eso solo rabbitmq necesita este override.
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/rabbitmq
   auth:
     username: sa_app
     password: ""
@@ -248,7 +262,7 @@ rabbitmq:
     enabled: true
     size: 1Gi
   resources:
-    requests: {cpu: 100m, memory: 128Mi}
-    limits: {cpu: 300m, memory: 256Mi}
+    requests: {cpu: 250m, memory: 384Mi}
+    limits: {cpu: 750m, memory: 768Mi}
   metrics:
     enabled: false

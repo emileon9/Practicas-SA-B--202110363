@@ -1,0 +1,42 @@
+# Ambiente GKE (Practica 6): overrides especificos del proveedor de nube.
+# Se combina con values-prod.yaml (replicas/recursos de "produccion") asi:
+#   helm install sa-platform . -n sa-p5 --create-namespace \
+#     -f values-prod.yaml -f values-gke.yaml -f values-secrets.yaml
+#
+# Cambia unicamente lo que es especifico de GKE: de donde se descargan las
+# imagenes (Artifact Registry en vez del daemon local de Docker) y el host
+# del Ingress (la IP publica del LoadBalancer de ingress-nginx, usando el
+# servicio gratuito nip.io en vez de un dominio propio o /etc/hosts).
+
+gateway:
+  image:
+    repository: us-central1-docker.pkg.dev/sa-platform-202110363/sa-platform/gateway
+
+ms-users:
+  image:
+    repository: us-central1-docker.pkg.dev/sa-platform-202110363/sa-platform/ms-users
+
+ms-products:
+  image:
+    repository: us-central1-docker.pkg.dev/sa-platform-202110363/sa-platform/ms-products
+
+ms-orders:
+  image:
+    repository: us-central1-docker.pkg.dev/sa-platform-202110363/sa-platform/ms-orders
+
+ms-notifications:
+  image:
+    repository: us-central1-docker.pkg.dev/sa-platform-202110363/sa-platform/ms-notifications
+
+cronJobs:
+  heartbeat:
+    image:
+      repository: us-central1-docker.pkg.dev/sa-platform-202110363/sa-platform/cronjob-heartbeat
+  summary:
+    image:
+      repository: us-central1-docker.pkg.dev/sa-platform-202110363/sa-platform/cronjob-summary
+
+# IP publica asignada por el LoadBalancer de ingress-nginx (Fase 5/9 de P6).
+# nip.io resuelve "<ip>.nip.io" automaticamente a esa IP, sin configurar DNS.
+ingress:
+  host: "34.170.206.2.nip.io"

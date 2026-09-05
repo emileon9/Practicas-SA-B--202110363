@@ -6,8 +6,8 @@ description: >-
   avanzada en Kubernetes con broker de mensajeria, persistencia durable,
   aislamiento de red y RBAC de minimo privilegio.
 type: application
-version: 1.0.0
-appVersion: "1.0.0"
+version: 1.1.0
+appVersion: "1.1.0"
 keywords:
   - microservices
   - kubernetes

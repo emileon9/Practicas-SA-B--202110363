@@ -28,7 +28,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: gateway-svc
+                name: gateway
                 port:
                   number: {{ .Values.gateway.containerPort }}
 {{- end }}
