@@ -1,0 +1,151 @@
+name: CI
+
+# Practica 7 (Software Avanzado, USAC): Integracion Continua del sistema de
+# microservicios de la Practica 5 (P5/services, P5/jobs).
+#
+# Estrategia de versionamiento (ver P7/README.md):
+#   - Pull request hacia master           -> build + test + validacion de Dockerfiles
+#   - Push a cualquier rama                -> build + test + validacion de Dockerfiles
+#   - Push a master                        -> ademas construye y publica las
+#                                              imagenes en GHCR (job docker-build-push),
+#                                              lo que dispara P7/.github/workflows/cd.yml
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "P5/services/**"
+      - "P5/jobs/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [master]
+    paths:
+      - "P5/services/**"
+      - "P5/jobs/**"
+      - ".github/workflows/ci.yml"
+
+env:
+  NODE_VERSION: "20"
+  PYTHON_VERSION: "3.12"
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: sa-platform
+
+jobs:
+  test-node:
+    name: Build + Test (Node) - ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [gateway, ms-users, ms-products]
+    defaults:
+      run:
+        working-directory: P5/services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: P5/services/${{ matrix.service }}/package-lock.json
+
+      - name: Instalar dependencias (npm ci)
+        run: npm ci
+
+      - name: Build (tsc)
+        run: npm run build
+
+      - name: Tests (jest)
+        run: npm test
+
+  test-python:
+    name: Test (Python) - ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [ms-orders, ms-notifications]
+    defaults:
+      run:
+        working-directory: P5/services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: P5/services/${{ matrix.service }}/requirements-dev.txt
+
+      - name: Instalar dependencias (runtime + dev)
+        run: pip install -r requirements-dev.txt
+
+      - name: Tests (pytest)
+        run: pytest -v
+
+  docker-validate:
+    name: Docker build (validacion) - ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    needs: [test-node, test-python]
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: gateway, context: P5/services/gateway }
+          - { name: ms-users, context: P5/services/ms-users }
+          - { name: ms-products, context: P5/services/ms-products }
+          - { name: ms-orders, context: P5/services/ms-orders }
+          - { name: ms-notifications, context: P5/services/ms-notifications }
+          - { name: cronjob-heartbeat, context: P5/jobs/cronjob-heartbeat }
+          - { name: cronjob-summary, context: P5/jobs/cronjob-summary }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build de validacion (sin push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          push: false
+          tags: sa-platform/${{ matrix.image.name }}:ci-validate
+
+  docker-build-push:
+    name: Docker build + push (GHCR) - ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    needs: [docker-validate]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: gateway, context: P5/services/gateway }
+          - { name: ms-users, context: P5/services/ms-users }
+          - { name: ms-products, context: P5/services/ms-products }
+          - { name: ms-orders, context: P5/services/ms-orders }
+          - { name: ms-notifications, context: P5/services/ms-notifications }
+          - { name: cronjob-heartbeat, context: P5/jobs/cronjob-heartbeat }
+          - { name: cronjob-summary, context: P5/jobs/cronjob-summary }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push con tag de commit y latest
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image.name }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image.name }}:latest

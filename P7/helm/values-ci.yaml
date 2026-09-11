@@ -1,0 +1,45 @@
+# Overlay de Helm para el despliegue automatico de la Practica 7.
+#
+# Se combina con P5/charts/sa-platform/values-dev.yaml (mismo patron que
+# P6/helm/values-gke.yaml combina con values-prod.yaml), asi:
+#
+#   helm upgrade --install sa-platform P5/charts/sa-platform \
+#     -n sa-p5 --create-namespace \
+#     -f values-dev.yaml \
+#     -f P7/helm/values-ci.yaml \
+#     -f <values-secrets.yaml local, nunca versionado> \
+#     --set gateway.image.tag=<sha-del-commit> ...
+#
+# Cambia unicamente el repositorio de imagenes: en vez del daemon local
+# (sa-platform/<svc>) o Artifact Registry (P6), usa GitHub Container
+# Registry, publicado automaticamente por el job docker-build-push de
+# .github/workflows/ci.yml. El tag real (SHA del commit) lo inyecta
+# .github/workflows/cd.yml con --set en el momento del deploy, no aqui.
+
+gateway:
+  image:
+    repository: ghcr.io/emileon9/sa-platform/gateway
+
+ms-users:
+  image:
+    repository: ghcr.io/emileon9/sa-platform/ms-users
+
+ms-products:
+  image:
+    repository: ghcr.io/emileon9/sa-platform/ms-products
+
+ms-orders:
+  image:
+    repository: ghcr.io/emileon9/sa-platform/ms-orders
+
+ms-notifications:
+  image:
+    repository: ghcr.io/emileon9/sa-platform/ms-notifications
+
+cronJobs:
+  heartbeat:
+    image:
+      repository: ghcr.io/emileon9/sa-platform/cronjob-heartbeat
+  summary:
+    image:
+      repository: ghcr.io/emileon9/sa-platform/cronjob-summary

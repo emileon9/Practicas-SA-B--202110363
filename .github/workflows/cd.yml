@@ -1,0 +1,101 @@
+name: CD
+
+# Practica 7 (Software Avanzado, USAC): Despliegue Continuo del chart de
+# Helm sa-platform (P5/charts/sa-platform) hacia un cluster de Kubernetes.
+#
+# Se dispara automaticamente cuando el workflow "CI" termina en exito sobre
+# master (es decir, despues de que las imagenes ya fueron publicadas en
+# GHCR por el job docker-build-push de ci.yml).
+#
+# LIMITACION DOCUMENTADA (ver P7/README.md "Kubernetes" y "Problemas
+# conocidos"): el cluster de GKE usado en la Practica 6 fue eliminado
+# deliberadamente para no seguir generando costo. Un runner alojado por
+# GitHub (en la nube) no puede alcanzar un cluster que vive en la
+# maquina local del estudiante (Docker Desktop Kubernetes / minikube).
+# Por eso este job corre en un runner "self-hosted": la propia maquina
+# del estudiante, que ya tiene configurado su contexto de kubectl y
+# Helm instalado (igual que en P5/P6). Ver P7/README.md seccion
+# "Self-hosted runner" para el procedimiento de registro.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  deploy:
+    name: Helm upgrade + verificacion de rollout
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'master'
+    runs-on: [self-hosted]
+    defaults:
+      run:
+        shell: bash
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: sa-platform
+      NAMESPACE: sa-p5
+      RELEASE: sa-platform
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Verificar herramientas disponibles en el runner
+        run: |
+          helm version
+          kubectl version --client
+          kubectl config current-context
+
+      - name: Verificar que el archivo de secretos locales existe
+        run: |
+          if [ -z "${SECRETS_PATH}" ]; then
+            echo "::error::La variable de repositorio SA_PLATFORM_SECRETS_PATH no esta configurada."
+            echo "Debe apuntar, en la maquina del self-hosted runner, a una copia de"
+            echo "P5/charts/sa-platform/values-secrets.yaml (NUNCA versionada en git)."
+            exit 1
+          fi
+          if [ ! -f "${SECRETS_PATH}" ]; then
+            echo "::error::No se encontro el archivo de secretos en: ${SECRETS_PATH}"
+            exit 1
+          fi
+        env:
+          SECRETS_PATH: ${{ vars.SA_PLATFORM_SECRETS_PATH }}
+
+      - name: helm dependency build (postgresql + rabbitmq)
+        working-directory: P5/charts/sa-platform
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami --force-update
+          helm dependency build .
+
+      - name: helm upgrade --install (imagenes con tag = commit SHA)
+        working-directory: P5/charts/sa-platform
+        run: |
+          helm upgrade --install "${RELEASE}" . \
+            --namespace "${NAMESPACE}" --create-namespace \
+            -f values-dev.yaml \
+            -f "${{ github.workspace }}/P7/helm/values-ci.yaml" \
+            -f "${{ vars.SA_PLATFORM_SECRETS_PATH }}" \
+            --set gateway.image.tag="${IMAGE_TAG}" \
+            --set ms-users.image.tag="${IMAGE_TAG}" \
+            --set ms-products.image.tag="${IMAGE_TAG}" \
+            --set ms-orders.image.tag="${IMAGE_TAG}" \
+            --set ms-notifications.image.tag="${IMAGE_TAG}" \
+            --set cronJobs.heartbeat.image.tag="${IMAGE_TAG}" \
+            --set cronJobs.summary.image.tag="${IMAGE_TAG}" \
+            --wait --timeout 10m
+
+      - name: Verificar rollout de cada Deployment
+        run: |
+          for deploy in gateway ms-users ms-products ms-orders ms-notifications; do
+            echo "== kubectl rollout status deployment/${deploy} =="
+            kubectl rollout status "deployment/${deploy}" -n "${NAMESPACE}" --timeout=180s
+          done
+
+      - name: Estado final de pods y cronjobs (evidencia)
+        if: always()
+        run: |
+          kubectl get deployments -n "${NAMESPACE}" -o wide
+          kubectl get pods -n "${NAMESPACE}" -o wide
+          kubectl get cronjobs -n "${NAMESPACE}"

@@ -27,6 +27,13 @@ ms-orders:
 ms-notifications:
   image:
     repository: us-central1-docker.pkg.dev/sa-platform-202110363/sa-platform/ms-notifications
+    # 1.0.1 corrige una condicion de carrera real encontrada al desplegar en
+    # GKE: el hilo consumidor de RabbitMQ intentaba conectar a PostgreSQL una
+    # sola vez sin reintentos; en la nube el primer arranque de PostgreSQL
+    # (adjuntar el disco persistente) tarda mas que en local y el intento
+    # hacia timeout, matando el hilo para siempre. Ver
+    # services/ms-notifications/app/services/summary_consumer.py.
+    tag: "1.0.1"
 
 cronJobs:
   heartbeat:
@@ -40,3 +47,17 @@ cronJobs:
 # nip.io resuelve "<ip>.nip.io" automaticamente a esa IP, sin configurar DNS.
 ingress:
   host: "34.170.206.2.nip.io"
+
+# El ResourceQuota base (values.yaml) esta dimensionado para un cluster
+# local de ~4GB RAM. En GKE Autopilot cada contenedor consume algo mas de
+# cuota (Autopilot ajusta los minimos de recursos por contenedor), y un
+# rolling update normal necesita crear el pod nuevo antes de tumbar el
+# viejo: con la cuota local (limits.cpu: 6) eso bloqueaba cualquier
+# `helm upgrade` con "exceeded quota" (verificado al desplegar la
+# correccion de ms-notifications:1.0.1). Se amplia solo aqui, no en el
+# values.yaml compartido con el entorno local.
+resourceQuota:
+  requestsCpu: "6"
+  requestsMemory: 6Gi
+  limitsCpu: "10"
+  limitsMemory: 10Gi
