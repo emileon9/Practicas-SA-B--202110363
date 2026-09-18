@@ -2,34 +2,262 @@
 
 Software Avanzado (USAC) · Carné **202110363**
 
-> **Estado: en construcción.** Este README documenta primero el diagnóstico
-> real del repositorio (Fase 1) y el plan de implementación. Las secciones
-> marcadas `PENDIENTE` se completan en fases posteriores, a medida que se
-> implementan y se pueden verificar (no se documenta nada que no se haya
-> ejecutado o construido realmente).
+> **Estado real de esta entrega:** todo el código, los manifiestos y los
+> pipelines descritos aquí existen en este repositorio y fueron validados
+> localmente donde había herramientas disponibles para hacerlo (`helm
+> lint`/`helm template` sobre los 8 charts, `npm test` del gateway tras el
+> cambio de fallo inducido, sintaxis de los 3 workflows y de todos los
+> manifiestos YAML). Lo que requiere un clúster de Kubernetes en vivo,
+> Terraform instalado, o el repositorio GitOps ya creado en GitHub, se
+> marca explícitamente como `PENDIENTE` — nada de eso se simula ni se
+> inventa. Ver la sección 11 (Entorno) para el detalle exacto.
 
-## 0. Qué evoluciona respecto a P7
+## 1. Descripción
 
-[P7](../P7) automatizó CI/CD con GitHub Actions, pero el job de despliegue
-(`cd.yml`) ejecuta `helm upgrade --install` **directamente contra el clúster
-local** desde un runner self-hosted. P8 elimina ese acoplamiento: GitHub
-Actions deja de tocar el clúster; el repositorio Git (uno de aplicación y
-uno de manifiestos GitOps) pasa a ser la única fuente de verdad, y ArgoCD +
-Argo Rollouts son los únicos componentes que aplican cambios al clúster, con
-entrega progresiva (canary) y reversión automática ante fallos.
+Esta práctica evoluciona el CI/CD de la [Práctica 7](../P7) (GitHub
+Actions con `helm upgrade --install` directo al clúster) hacia un modelo
+**GitOps** completo sobre el mismo sistema de microservicios construido en
+las Prácticas 4, 5 y 6: 5 servicios REST/GraphQL + 2 CronJobs, ahora
+empaquetados como **7 charts de Helm independientes** más un chart de
+plataforma compartida, desplegados por **ArgoCD**, con **entrega
+progresiva (canary)** vía **Argo Rollouts** en el componente de entrada
+externa (`gateway`), **infraestructura de namespace administrada por
+Terraform**, y controles de **seguridad de cadena de suministro** (Trivy,
+SBOM, firma con Cosign, políticas Kyverno, secretos sellados) integrados
+al pipeline.
 
-## 1. Diagnóstico del repositorio existente (Fase 1)
+Ningún microservicio, Dockerfile ni lógica de negocio de P4/P5/P6 fue
+reescrito: P8 agrega la capa de entrega y seguridad alrededor de lo que ya
+funcionaba, y donde una decisión de P7 era incompatible con GitOps (deploy
+directo desde Actions, tag `latest`, namespace administrado por Helm), se
+documentó la incompatibilidad y se corrigió explícitamente — ver la
+sección 12 (Diagnóstico) para el detalle de cada cambio y su justificación.
 
-### 1.1 Arquitectura actual
+## 2. Arquitectura del flujo
+
+```
+Developer → git tag vX.Y.Z → GitHub Actions
+  (tests → helm lint → Trivy → SBOM → build → cosign sign → push a GHCR)
+  → Pull Request al repositorio GitOps → merge
+  → ArgoCD sincroniza → Argo Rollouts ejecuta el canary de gateway
+  (10% → analysis → 30% → analysis → 60% → analysis → 100%)
+  → PASS: promoción completa · FAIL: rollback automático a la version estable
+```
+
+Diagrama completo (Mermaid, con anotaciones de dónde se valida, quién
+aplica cambios, dónde ocurre la promoción/rollback y dónde se aplica
+seguridad de supply chain): **[docs/gitops-flow.md](docs/gitops-flow.md)**.
+
+## 3. GitOps
+
+- **Repositorio de código** (este repositorio): charts de Helm
+  (`P8/helm/*`), Terraform (`P8/terraform`), manifiestos de ArgoCD
+  (`P8/argocd`), políticas de Kyverno (`P8/security/kyverno`), tests y
+  pipelines. Nunca despliega directamente al clúster.
+- **Repositorio GitOps** (independiente, `PENDIENTE` de crear
+  manualmente): contiene únicamente el tag de imagen por servicio y
+  ambiente (`apps/<servicio>/values-{dev,prod}.yaml`). Plantilla exacta
+  lista para copiar: [P8/gitops-repo-template/](P8/gitops-repo-template/).
+  Pasos manuales exactos de activación:
+  [docs/GITOPS.md, sección 5](docs/GITOPS.md#5-qué-debe-crear-manualmente-el-estudiante-en-github).
+- **ArgoCD**: único componente que aplica cambios al clúster. 8
+  `Application` (una por componente + una de plataforma) agrupadas en el
+  `AppProject` `sa-platform` — ver [P8/argocd/](P8/argocd/). Cada
+  `Application` combina dos fuentes: el chart de Helm (repo de código) y
+  el archivo de valores por ambiente (repo GitOps).
+- **Fuente de verdad**: el estado de los repositorios Git (código +
+  GitOps), nunca un `kubectl apply` manual ni un `helm upgrade` ejecutado
+  desde CI.
+
+## 4. Helm
+
+**7 charts independientes** (uno por componente, fragmentados desde el
+chart umbrella de P5) + **1 chart de plataforma** para recursos
+compartidos:
+
+| Chart | Contiene |
+|---|---|
+| `gateway` | Rollout (Argo Rollouts, no Deployment) + AnalysisTemplate + Ingress + HPA + PDB + RBAC |
+| `ms-users`, `ms-products`, `ms-orders` | Deployment + HPA + PDB + RBAC |
+| `ms-notifications` | igual, + consume Secret de DB y de broker |
+| `cronjob-heartbeat`, `cronjob-summary` | CronJob + RBAC |
+| `platform` | ConfigMap compartido, NetworkPolicy, SealedSecrets de DB/broker |
+
+Cada chart de servicio tiene `values.yaml` (base) + `values-dev.yaml` +
+`values-prod.yaml`, parametrizando como mínimo: repositorio/tag de imagen,
+réplicas, recursos, Service, Ingress (solo `gateway`) y variables de
+entorno. Decisión completa de por qué se fragmentó y cómo se resolvieron
+los recursos que antes compartía el chart padre:
+[docs/GITOPS.md, sección 4](docs/GITOPS.md#4-decisión-un-chart-de-helm-independiente-por-componente).
+
+**Validado** (ejecutado realmente en esta sesión, no asumido):
+`helm lint` + `helm template` sobre los 8 charts, con `values.yaml` base y
+cada overlay de ambiente → 0 errores. El job `helm-lint` de
+`.github/workflows/ci.yml` repite exactamente esto en cada push/PR que
+toque `P8/helm/**`.
+
+## 5. Terraform
+
+`P8/terraform/` administra la infraestructura de **plataforma** del
+namespace `sa-p5` (los mismos valores reales que antes vivían en
+`P5/charts/sa-platform/values.yaml`, migrados aquí para resolver el
+solape de responsabilidad entre Helm y Terraform):
+
+- `Namespace` (`sa-p5`)
+- `ResourceQuota` (`requests.cpu=3`, `requests.memory=3Gi`, `limits.cpu=6`,
+  `limits.memory=6Gi`, `pods=60`)
+- `LimitRange` por contenedor (`request` 50m/64Mi, `limit` 250m/256Mi)
+- `Role`/`RoleBinding` de mínimo privilegio para el ServiceAccount de
+  ArgoCD, **scoping su acceso únicamente al namespace `sa-p5`** (no
+  cluster-admin)
+
+**Estado real:** el código es correcto y consistente con los valores ya
+usados en producción por P5/P6, pero `terraform validate`/`plan`/`apply`
+**no se han podido ejecutar todavía**: Terraform CLI no está instalado en
+esta máquina (verificado: `terraform` no está en el `PATH`). Pendiente de
+instalar y ejecutar antes de la demo.
+
+## 6. Argo Rollouts
+
+Estrategia **canary**, aplicada al componente `gateway` (único punto de
+entrada externo de la plataforma — candidato natural para demostrar
+entrega progresiva). El resto de los 6 componentes siguen siendo
+`Deployment` normales; el mismo patrón se replica igual a cualquiera si se
+decide extender el canary.
+
+**3+ pasos, cada uno condicionado por análisis** (ninguna promoción
+incondicional):
+
+```
+100% estable → 10% nueva (AnalysisTemplate) → 30% nueva (AnalysisTemplate)
+→ 60% nueva (AnalysisTemplate) → 100% nueva
+```
+
+El `AnalysisTemplate` (`P8/helm/gateway/templates/analysistemplate.yaml`)
+usa el provider `job` de Argo Rollouts (sin necesidad de Prometheus):
+ejecuta 20 peticiones reales a `GET /health` del propio `gateway` y falla
+el paso si la tasa de error supera `10%` o alguna petición excede `1s`
+(`maxLatencySeconds`). Si el `AnalysisRun` falla, Argo Rollouts revierte
+automáticamente el peso al 100% de la versión estable — sin intervención
+manual (ver sección 9).
+
+**Limitación documentada honestamente:** al no usar service mesh, el
+Service de `gateway` balancea tráfico entre pods estables y canary de
+forma proporcional a sus réplicas (no aislado); el análisis mide por lo
+tanto el comportamiento agregado del Service durante cada paso.
+
+## 7. Validaciones automatizadas
+
+Tres categorías, contra endpoints reales (ver
+**[docs/TESTING.md](docs/TESTING.md)** para el detalle
+requisito→comando→evidencia de cada una):
+
+- **Smoke** ([P8/tests/smoke/smoke-test.sh](tests/smoke/smoke-test.sh)):
+  `/health` de los 5 servicios REST, `GET /api/orders/orders`, `GET
+  /api/notifications/notifications`, `POST /api/{users,products}/graphql`.
+- **Integration** ([P8/tests/integration/integration-test.sh](tests/integration/integration-test.sh)):
+  gateway→ms-users (proxy real, no simulado) y la cadena asíncrona
+  completa `cronjob-heartbeat → PostgreSQL → cronjob-summary → RabbitMQ →
+  ms-notifications`.
+- **Load** ([P8/tests/load/README.md](tests/load/README.md)): reutiliza
+  `P5/scripts/load-test/k6-script.js` (k6, ya usado en P5) sin duplicarlo;
+  umbrales `error rate<5%`, `p95<1500ms`, justificados contra el HPA real
+  de `gateway`.
+
+## 8. Seguridad de la cadena de suministro
+
+Ver **[docs/SECURITY.md](docs/SECURITY.md)** para el detalle completo
+(comando, configuración, resultado esperado y evidencia de cada control).
+Resumen:
+
+- **Trivy**: escanea cada imagen en `gitops-update.yml`, `exit-code: 1`
+  ante cualquier `CRITICAL` con parche disponible — bloquea el release.
+- **SBOM**: Trivy en formato CycloneDX, subido como artefacto por imagen.
+- **Cosign**: firma *keyless* (Sigstore/OIDC de GitHub, sin llave privada
+  guardada como secret) tras el push a GHCR.
+- **Verificación de firma**: `cosign verify` documentado con el comando
+  exacto; el siguiente paso natural (política `verifyImages` de Kyverno)
+  queda documentado como pendiente de la identidad OIDC real de un run.
+- **Kyverno**: 3 `ClusterPolicy` obligatorias (`disallow-latest`,
+  `require-resource-limits`, `disallow-root`), cada una con un manifiesto
+  de prueba deliberadamente inválido en `P8/security/kyverno/`.
+- **Secretos**: auditoría real del repositorio (sin secretos en texto
+  plano encontrados) + migración del `Secret` de DB/broker a
+  **SealedSecrets** (`P8/helm/platform/templates/sealedsecrets.yaml`) para
+  que el repositorio GitOps pueda versionar el ciphertext sin exponer
+  ninguna contraseña.
+- **Versionamiento semántico**: `gitops-update.yml` solo se dispara con
+  tags `vX.Y.Z`; ninguna imagen se publica ni referencia como `latest`.
+
+## 9. Fallo inducido y rollback automático
+
+`gateway` incluye un hook de fallo controlado, apagado por defecto
+(`FAULT_INJECT_RATE=0`, comportamiento idéntico a P5/P7 — verificado con
+`npm test`, 3/3 tests siguen pasando). Al publicar un release con
+`FAULT_INJECT_RATE` elevado en el overlay del ambiente, `/health` empieza
+a fallar con esa probabilidad; el `AnalysisTemplate` del primer paso del
+canary lo detecta (tasa de error > 10%) y Argo Rollouts revierte
+automáticamente al 100% de la versión estable, sin ejecutar ningún comando
+manual. Detalle completo, con los campos de tiempo de recuperación
+pendientes de la demo real: **[docs/INCIDENT.md](docs/INCIDENT.md)**.
+
+## 10. Evidencias
+
+| Ítem | Enlace o dato |
+|---|---|
+| Repositorio de código | https://github.com/emileon9/Practicas-SA-B--202110363 |
+| Repositorio GitOps | PENDIENTE — completar después de crearlo (ver docs/GITOPS.md sección 5) |
+| Aplicación en ArgoCD | `sa-platform-gateway` (+ 6 más + `sa-platform-platform`), namespace `argocd`, destino `sa-p5` — PENDIENTE de instalar ArgoCD y sincronizar por primera vez |
+| Ejecución exitosa del pipeline | PENDIENTE — completar con la URL del primer run real de `gitops-update.yml` |
+| Reversión automática | PENDIENTE — completar con la URL del run + `kubectl get rollout gateway -n sa-p5` tras el fallo inducido |
+| Despliegue rechazado por política | PENDIENTE — completar con la salida de `kubectl apply -f P8/security/kyverno/test-invalid-*.yaml` |
+| Bloqueo por vulnerabilidad crítica | PENDIENTE — completar con la URL del Pull Request/run donde Trivy bloqueó |
+| Imagen firmada | PENDIENTE — completar con `registry/imagen:tag` real tras el primer release |
+| Reporte de prueba de carga | `P5/scripts/load-test/results/summary.json` (ruta; se genera al correr el load test) |
+| Video demostrativo | PENDIENTE |
+
+## Video demostrativo
+
+| Punto | Minuto |
+|---|---|
+| Arquitectura | 00:00 |
+| Pipeline | 00:00 |
+| ArgoCD | 00:00 |
+| Canary | 00:00 |
+| Fallo | 00:00 |
+| Rollback | 00:00 |
+| Política rechazada | 00:00 |
+| Seguridad | 00:00 |
+
+---
+
+## 11. Entorno verificado en esta máquina (no asumido)
+
+| Herramienta | Estado |
+|---|---|
+| `helm` | ✅ v4.2.4 |
+| `kubectl` | ✅ v1.32.2 |
+| `docker` | ✅ instalado |
+| `k6` | ✅ v2.2.0 |
+| `terraform` | ❌ no instalado |
+| `cosign`, `trivy`, `syft`, `argocd` CLI, `kubectl-argo-rollouts` | ❌ no instalados localmente (se usan dentro de GitHub Actions; instalar localmente solo si se quiere probar fuera del pipeline) |
+| Clúster de Kubernetes accesible | ❌ ninguno corriendo ahora (`docker-desktop` y `minikube` existen como contextos, pero ninguno responde) |
+| Repositorio GitOps independiente | ❌ no creado todavía |
+
+## 12. Diagnóstico del repositorio original y decisiones tomadas
+
+<details>
+<summary>Ver diagnóstico completo (arquitectura previa, incompatibilidades detectadas y qué se reutilizó tal cual)</summary>
+
+### Arquitectura previa (P5/P7)
 
 Un único chart de Helm (`sa-platform`, ver
-[P5/charts/sa-platform](../P5/charts/sa-platform)) empaqueta **7 componentes
-reales** en el namespace `sa-p5`, con dependencias externas `postgresql` y
-`rabbitmq` (Bitnami) y una capa de red (`NetworkPolicy`) e infraestructura de
-namespace (`ResourceQuota`, `LimitRange`) definida **dentro del propio
-chart** (`P5/charts/sa-platform/values.yaml`).
+[P5/charts/sa-platform](../P5/charts/sa-platform)) empaquetaba los 7
+componentes en el namespace `sa-p5`, con `postgresql`/`rabbitmq`
+(Bitnami) como dependencias, y `NetworkPolicy`/`ResourceQuota`/
+`LimitRange` definidos dentro del propio chart.
 
-### 1.2 Servicios existentes (reales, no inventados)
+### Servicios reales (sin cambios de lógica de negocio)
 
 | Servicio | Stack | Dockerfile |
 |---|---|---|
@@ -41,102 +269,20 @@ chart** (`P5/charts/sa-platform/values.yaml`).
 | `cronjob-heartbeat` | Python | [P5/jobs/cronjob-heartbeat/Dockerfile](../P5/jobs/cronjob-heartbeat/Dockerfile) |
 | `cronjob-summary` | Python | [P5/jobs/cronjob-summary/Dockerfile](../P5/jobs/cronjob-summary/Dockerfile) |
 
-Todos exponen `GET /health` (usado como readiness/liveness probe desde P5),
-lo que los hace aptos como base real para smoke tests y para las métricas
-del `AnalysisTemplate` de Argo Rollouts (Fase 4).
+### Incompatibilidades detectadas y su corrección
 
-### 1.3 CI/CD existente (P7)
-
-- **CI** ([.github/workflows/ci.yml](../.github/workflows/ci.yml)): tests
-  (Jest/pytest) + `docker build` de validación + `docker push` a GHCR
-  (`ghcr.io/emileon9/sa-platform/<servicio>`) con tag `<sha>` **y
-  `latest`** cuando el push es a `master`.
-- **CD** ([.github/workflows/cd.yml](../.github/workflows/cd.yml)): se
-  dispara por `workflow_run` tras un CI exitoso en `master` y ejecuta
-  `helm upgrade --install` **directamente** en un runner self-hosted contra
-  el clúster local (`docker-desktop`/`minikube`), porque el clúster GKE de
-  P6 fue eliminado el 05/09/2026 por costo (ver
-  [P6/docs/eliminacion.md](../P6/docs/eliminacion.md)).
-
-### 1.4 Qué de esto es incompatible con P8 (y la corrección propuesta)
-
-| Incompatibilidad detectada | Corrección propuesta para P8 |
+| Incompatibilidad | Corrección aplicada |
 |---|---|
-| `cd.yml` ejecuta `helm upgrade --install` contra el clúster desde Actions | Eliminar el despliegue de `cd.yml`. El pipeline de código termina en: build → escaneo → firma → push → PR al repo GitOps. ArgoCD pasa a ser quien sincroniza. |
-| Las imágenes se etiquetan también como `latest` | Dejar de publicar `latest`; usar únicamente tags semánticos derivados de tags de Git (`vX.Y.Z`), consistente con la convención de tag-por-commit que P7 ya usaba parcialmente. |
-| `ResourceQuota`/`LimitRange`/namespace se crean **desde el chart de Helm** | Es el mismo tipo de solape que pide resolver la rúbrica de P8 (Terraform debe administrar namespace/quotas/RBAC). Se mueven esos recursos de *infraestructura de plataforma* a Terraform y se documentan como responsabilidad de Terraform; Helm conserva únicamente los `resources.requests/limits` **por contenedor** (configuración de la aplicación, no de la plataforma). |
-| Un solo chart umbrella para 7 componentes, en vez de "un chart por microservicio" | **Aplicado.** Se fragmentó en 7 charts de Helm independientes (`P8/helm/<componente>`), cada uno con su `Chart.yaml`, `values.yaml`, `values-dev.yaml` y `values-prod.yaml` propios. Los recursos que antes compartían (ConfigMap, Secrets, Ingress, ResourceQuota/LimitRange) se resolvieron sin duplicarlos — ver el detalle en [docs/GITOPS.md, sección 4](docs/GITOPS.md#4-decisión-un-chart-de-helm-independiente-por-componente). |
-| No existe repositorio GitOps independiente | Se prepara toda la estructura esperada (`argocd/`, convenciones de path/branch) dentro de este repo, documentando exactamente qué se debe crear manualmente como repo independiente en GitHub (Fase 3). |
+| `cd.yml` ejecutaba `helm upgrade --install` directo al clúster desde un runner self-hosted | Su disparador automático fue deshabilitado (ahora `workflow_dispatch` manual únicamente); el flujo vigente es `gitops-update.yml`, que nunca toca el clúster |
+| Imágenes etiquetadas también como `latest` | `gitops-update.yml` solo publica el tag semántico del Git tag que lo disparó |
+| `ResourceQuota`/`LimitRange`/namespace creados desde el chart de Helm | Movidos a Terraform (`P8/terraform`), con los mismos valores reales |
+| Chart umbrella único en vez de "un chart por microservicio" | Fragmentado en 7 charts independientes + 1 de plataforma (`P8/helm/*`) |
+| No existía repositorio GitOps independiente | Estructura y plantilla completas preparadas (`P8/gitops-repo-template/`), con los pasos manuales exactos documentados |
 
-### 1.5 Qué reutilizar sin cambios
+### Qué se reutilizó sin cambios
 
-- Los 7 Dockerfiles (multi-stage, `USER` no-root ya configurado).
-- El chart `sa-platform` como base (valores por servicio, HPA, probes,
-  NetworkPolicy).
-- Los tests unitarios/integración de P7 (`P5/services/*/tests`) como base
-  de los *integration tests* de P8.
-- El script de carga existente ([P5/scripts/load-test/k6-script.js](../P5/scripts/load-test/k6-script.js))
-  como punto de partida para los *load tests* de P8 (ya usa k6).
-- GHCR como registro de contenedores.
+Los 7 Dockerfiles (multi-stage, no-root), la lógica y las pruebas
+unitarias de cada servicio, GHCR como registro, y el script de carga k6 de
+P5.
 
-### 1.6 Qué falta (a implementar en las fases siguientes)
-
-Terraform (namespace/quotas/RBAC), repositorio/estructura GitOps, Application
-de ArgoCD, Argo Rollouts (canary + `AnalysisTemplate`), smoke/integration
-tests dedicados a P8, Trivy + SBOM + Cosign + verificación de firma en el
-pipeline, políticas Kyverno, gestión de secretos sin texto plano, estrategia
-de fallo inducido + rollback automático, informe de incidente, diagrama y
-tabla de evidencias.
-
-## 2. Plan de implementación por fases
-
-| Fase | Contenido | Estado |
-|---|---|---|
-| 1 | Diagnóstico (este documento) | ✅ |
-| 2 | Estructura P8, Terraform, Helm (7 charts independientes), tests base, docs base | 🔄 en progreso — Terraform y los 7 charts listos y validados con `helm lint`/`helm template`; falta `terraform validate` real (Terraform no está instalado en esta máquina todavía) y los tests base |
-| 3 | GitOps: manifiestos, ArgoCD Application, flujo de actualización de imagen | ⬜ pendiente |
-| 4 | Argo Rollouts: canary de 3+ pasos, `AnalysisTemplate`, rollback automático | ⬜ pendiente |
-| 5 | Seguridad de cadena de suministro: Trivy, SBOM, Cosign, Kyverno, secretos | ⬜ pendiente |
-| 6 | Ejecución/validación real de lo anterior (`helm lint`, `terraform validate`, etc.) | ⬜ pendiente |
-| 7 | Evidencia por requisito | ⬜ pendiente |
-| 8 | Documentación final (`GITOPS.md`, `SECURITY.md`, `TESTING.md`, `INCIDENT.md`, tabla de enlaces) | ⬜ pendiente |
-
-## 3. Estructura de archivos de esta práctica (parcial, se amplía por fase)
-
-```
-P8/
-├── README.md              Este archivo (diagnóstico + plan)
-├── docs/
-│   └── GITOPS.md           Arquitectura GitOps (repos, ArgoCD, decisiones)
-├── terraform/              Namespace, ResourceQuota, LimitRange, RBAC de ArgoCD
-│   ├── providers.tf
-│   ├── variables.tf
-│   ├── main.tf
-│   └── outputs.tf
-└── helm/                   7 charts independientes (uno por componente)
-    ├── gateway/
-    ├── ms-users/
-    ├── ms-products/
-    ├── ms-orders/
-    ├── ms-notifications/
-    ├── cronjob-heartbeat/
-    └── cronjob-summary/
-```
-
-## 4. Entorno disponible para la demostración
-
-Verificado con comandos reales durante esta fase (no asumido):
-
-| Herramienta | Estado en esta máquina |
-|---|---|
-| `helm` | ✅ instalado (v4.2.4) — los 7 charts pasan `helm lint`/`helm template` |
-| `kubectl` | ✅ instalado (v1.32.2) |
-| `docker` | ✅ instalado |
-| `k6` | ✅ instalado (v2.2.0) — se reutilizará para los load tests (Fase 6) |
-| `terraform` | ❌ no instalado — el código en `terraform/` no se ha podido validar con `terraform validate`/`plan`/`apply` todavía |
-| `cosign`, `trivy`, `syft`, `argocd` (CLI), `kubectl-argo-rollouts` | ❌ no instalados localmente — se usarán dentro del pipeline de GitHub Actions (Fase 5) o deben instalarse en el clúster/máquina para probarlos en local |
-| Clúster de Kubernetes accesible | ❌ **no hay ninguno corriendo ahora mismo**: `kubectl config get-contexts` muestra los contextos `docker-desktop` y `minikube`, pero ninguno tiene `current-context` fijado y `kubectl get nodes` no logra conectar a ninguno de los dos. Es necesario **encender Docker Desktop Kubernetes o `minikube start`** antes de instalar ArgoCD/Argo Rollouts/Kyverno y demostrar el flujo end-to-end. |
-| Repositorio GitOps independiente | ❌ no existe todavía — el estudiante lo crea manualmente (ver [docs/GITOPS.md, sección 5](docs/GITOPS.md#5-qué-debe-crear-manualmente-el-estudiante-en-github)) |
-
-No hay GKE de P6 disponible (fue eliminado el 05/09/2026 por costo), así que
-la demo de P8 se hace contra un clúster local.
+</details>
