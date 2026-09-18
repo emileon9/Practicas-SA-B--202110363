@@ -1,0 +1,7 @@
+# Unico contenido de este repositorio para "gateway" en dev: el tag de imagen.
+# gitops-update.yml (repo de codigo) actualiza esto via Pull Request tras
+# build + Trivy + SBOM + cosign sign. El resto de la configuracion
+# (recursos, replicas, probes) vive en el chart de Helm del repo de codigo
+# (P8/helm/gateway), no aqui.
+image:
+  tag: ""

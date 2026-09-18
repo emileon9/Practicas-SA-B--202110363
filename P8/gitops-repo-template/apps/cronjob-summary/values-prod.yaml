@@ -1,0 +1,3 @@
+# Unico contenido de este repositorio para "cronjob-summary" en prod: el tag de imagen.
+image:
+  tag: ""
