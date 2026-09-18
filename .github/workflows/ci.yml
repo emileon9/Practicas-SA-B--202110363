@@ -15,12 +15,14 @@ on:
     paths:
       - "P5/services/**"
       - "P5/jobs/**"
+      - "P8/helm/**"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [master]
     paths:
       - "P5/services/**"
       - "P5/jobs/**"
+      - "P8/helm/**"
       - ".github/workflows/ci.yml"
 
 env:
@@ -30,6 +32,34 @@ env:
   IMAGE_NAMESPACE: sa-platform
 
 jobs:
+  helm-lint:
+    name: Helm lint - ${{ matrix.chart }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chart:
+          - gateway
+          - ms-users
+          - ms-products
+          - ms-orders
+          - ms-notifications
+          - cronjob-heartbeat
+          - cronjob-summary
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: helm lint (base + dev + prod)
+        working-directory: P8/helm
+        run: |
+          helm lint ${{ matrix.chart }}
+          helm lint ${{ matrix.chart }} -f ${{ matrix.chart }}/values-dev.yaml
+          helm lint ${{ matrix.chart }} -f ${{ matrix.chart }}/values-prod.yaml
+
   test-node:
     name: Build + Test (Node) - ${{ matrix.service }}
     runs-on: ubuntu-latest

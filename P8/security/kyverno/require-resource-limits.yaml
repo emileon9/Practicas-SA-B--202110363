@@ -1,0 +1,43 @@
+# Politica 2 (obligatoria): todo contenedor debe declarar
+# requests/limits de CPU y memoria. Patron estandar de la libreria oficial
+# de Kyverno (kyverno.io/policies/require-pod-requests-limits).
+#
+# Prueba real:
+#   kubectl apply -n sa-p5 -f P8/security/kyverno/test-invalid-no-limits.yaml
+#   -> esperado: rechazado (el Pod de prueba no declara resources).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Requests and Limits
+    policies.kyverno.io/category: sa-platform / Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Todo contenedor debe declarar requests y limits de cpu y memory.
+      Evita que un Pod sin cuota consuma recursos sin control dentro de la
+      ResourceQuota/LimitRange administrada por Terraform (P8/terraform).
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-resources
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: >-
+          Todo contenedor debe declarar resources.requests y
+          resources.limits de cpu y memory.
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    memory: "?*"
+                    cpu: "?*"
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"

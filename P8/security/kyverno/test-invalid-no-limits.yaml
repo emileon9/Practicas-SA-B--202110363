@@ -1,0 +1,13 @@
+# Manifiesto de prueba: DEBE ser rechazado por require-resource-limits.yaml.
+# kubectl apply -n sa-p5 -f P8/security/kyverno/test-invalid-no-limits.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-invalid-no-limits
+  namespace: sa-p5
+spec:
+  securityContext:
+    runAsNonRoot: true
+  containers:
+    - name: test
+      image: ghcr.io/emileon9/sa-platform/gateway:v1.0.0

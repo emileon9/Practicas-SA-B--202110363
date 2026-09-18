@@ -1,0 +1,46 @@
+# Politica 3 (obligatoria): prohibir contenedores que puedan correr como
+# root. Exige runAsNonRoot=true explicito a nivel de Pod y de cada
+# contenedor (los 7 charts de P8/helm/* ya lo declaran, ver
+# templates/rollout.yaml / deployment.yaml / cronjob.yaml de cada uno).
+#
+# Prueba real:
+#   kubectl apply -n sa-p5 -f P8/security/kyverno/test-invalid-root.yaml
+#   -> esperado: rechazado (el Pod de prueba no declara runAsNonRoot).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-root-user
+  annotations:
+    policies.kyverno.io/title: Disallow Root User
+    policies.kyverno.io/category: sa-platform / Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Los contenedores deben ejecutarse sin privilegios de root
+      (securityContext.runAsNonRoot=true), a nivel de Pod o de cada
+      contenedor.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-runAsNonRoot
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: >-
+          Se requiere securityContext.runAsNonRoot=true a nivel de Pod o de
+          cada contenedor. No se permiten contenedores que puedan correr
+          como root.
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+              containers:
+                - name: "*"
+          - spec:
+              containers:
+                - name: "*"
+                  securityContext:
+                    runAsNonRoot: true

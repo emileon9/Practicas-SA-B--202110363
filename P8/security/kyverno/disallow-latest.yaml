@@ -1,0 +1,50 @@
+# Politica 1 (obligatoria): prohibir la etiqueta "latest" (y la ausencia de
+# tag, que Kubernetes resuelve como "latest") en cualquier contenedor del
+# namespace de la plataforma. Usa el patron estandar de la libreria oficial
+# de politicas de Kyverno (kyverno.io/policies/disallow-latest-tag), no una
+# expresion JMESPath propia sin probar.
+#
+# Prueba real (requiere Kyverno instalado en el cluster, modo Enforce):
+#   kubectl apply -n sa-p5 -f P8/security/kyverno/test-invalid-latest.yaml
+#   -> esperado: "error: admission webhook ... denied the request"
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/category: sa-platform / Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Las imagenes deben usar un tag explicito derivado de un tag de Git
+      (vX.Y.Z), nunca "latest" ni la ausencia de tag. Ver P8/docs/SECURITY.md.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Toda imagen debe declarar un tag explicito (imagen:tag)."
+        pattern:
+          spec:
+            containers:
+              - image: "*:*"
+    - name: validate-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: >-
+          No se permite el tag "latest". Usa un tag semantico derivado de
+          un tag de Git (ej. v1.2.0).
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"

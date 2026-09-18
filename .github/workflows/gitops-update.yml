@@ -1,0 +1,183 @@
+name: GitOps Update
+
+# Practica 8: flujo de release seguro. Se dispara UNICAMENTE con un tag de
+# Git con formato semantico (vX.Y.Z), nunca con un push normal a master
+# (eso lo sigue cubriendo .github/workflows/ci.yml, sin publicar ni firmar
+# nada). Esto reemplaza, para el flujo de P8, lo que hacia
+# .github/workflows/cd.yml en P7 (helm upgrade directo al cluster desde el
+# runner self-hosted): este workflow NUNCA ejecuta kubectl/helm/terraform
+# contra ningun cluster, y no tiene ni necesita ningun kubeconfig. Su unica
+# escritura hacia "infraestructura" es abrir un Pull Request en el
+# repositorio GitOps -- quien aplica el cambio real es ArgoCD (ver
+# P8/argocd/applications).
+#
+# Flujo por cada una de las 7 imagenes:
+#   build (local, sin push) -> Trivy (bloquea CRITICAL) -> SBOM (Trivy,
+#   formato CycloneDX) -> push a GHCR con el tag semantico -> cosign sign
+#   (keyless, via OIDC de GitHub -- sin llave privada guardada como secret)
+#   -> actualizar el values del repo GitOps -> Pull Request
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: sa-platform
+
+permissions:
+  contents: read
+
+jobs:
+  build-scan-sign-push:
+    name: Build + Trivy + SBOM + Cosign - ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Requerido por cosign para firmar en modo "keyless" via Sigstore
+      # usando el token OIDC efimero de este job (sin llave privada).
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: gateway, context: P5/services/gateway }
+          - { name: ms-users, context: P5/services/ms-users }
+          - { name: ms-products, context: P5/services/ms-products }
+          - { name: ms-orders, context: P5/services/ms-orders }
+          - { name: ms-notifications, context: P5/services/ms-notifications }
+          - { name: cronjob-heartbeat, context: P5/jobs/cronjob-heartbeat }
+          - { name: cronjob-summary, context: P5/jobs/cronjob-summary }
+    outputs:
+      image_tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolver tag semantico desde el tag de Git
+        id: vars
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image.name }}"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (local, sin publicar todavia)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          push: false
+          load: true
+          tags: ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+
+      # --- Trivy: bloquea el pipeline (y por lo tanto el release) si hay
+      #     vulnerabilidades CRITICAL. Genera ademas el reporte como
+      #     artefacto de evidencia (P8/docs/SECURITY.md documenta esto). ---
+      - name: Trivy - escaneo de vulnerabilidades (bloquea CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+          format: table
+          output: trivy-report-${{ matrix.image.name }}.txt
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Subir reporte de Trivy como evidencia
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report-${{ matrix.image.name }}
+          path: trivy-report-${{ matrix.image.name }}.txt
+          retention-days: 30
+
+      # --- SBOM: se genera SIEMPRE que el escaneo de CRITICAL paso (si el
+      #     job llego hasta aqui). Formato CycloneDX, el mas usado para
+      #     cadena de suministro de software. ---
+      - name: SBOM (Trivy, CycloneDX)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+          format: cyclonedx
+          output: sbom-${{ matrix.image.name }}-${{ steps.vars.outputs.tag }}.cdx.json
+
+      - name: Subir SBOM como evidencia
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.image.name }}
+          path: sbom-${{ matrix.image.name }}-${{ steps.vars.outputs.tag }}.cdx.json
+          retention-days: 90
+
+      - name: Login en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push a GHCR (unicamente el tag semantico, nunca "latest")
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          push: true
+          tags: ${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}
+
+      - name: Instalar cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Firmar la imagen (cosign, keyless/Sigstore)
+        run: |
+          cosign sign --yes "${{ steps.vars.outputs.image }}:${{ steps.vars.outputs.tag }}"
+
+  gitops-pull-request:
+    name: Abrir PR en el repositorio GitOps
+    runs-on: ubuntu-latest
+    needs: [build-scan-sign-push]
+    steps:
+      - name: Verificar configuracion del repo GitOps
+        id: check
+        run: |
+          if [ -z "${{ vars.GITOPS_REPO_OWNER }}" ] || [ -z "${{ vars.GITOPS_REPO_NAME }}" ]; then
+            echo "::warning::GITOPS_REPO_OWNER/GITOPS_REPO_NAME no estan configurados todavia (Settings > Actions > Variables). Ver P8/docs/GITOPS.md seccion 5. Se omite la apertura del PR."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout del repositorio GitOps
+        if: steps.check.outputs.configured == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.GITOPS_REPO_OWNER }}/${{ vars.GITOPS_REPO_NAME }}
+          token: ${{ secrets.GITOPS_REPO_TOKEN }}
+          path: gitops
+
+      - name: Actualizar el tag de imagen en cada apps/<servicio>/values-prod.yaml
+        if: steps.check.outputs.configured == 'true'
+        run: |
+          TAG="${{ needs.build-scan-sign-push.outputs.image_tag }}"
+          for svc in gateway ms-users ms-products ms-orders ms-notifications cronjob-heartbeat cronjob-summary; do
+            FILE="gitops/apps/$svc/values-prod.yaml"
+            if [ -f "$FILE" ]; then
+              sed -i "s/^  tag:.*/  tag: \"$TAG\"/" "$FILE"
+            fi
+          done
+
+      - name: Abrir Pull Request
+        if: steps.check.outputs.configured == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITOPS_REPO_TOKEN }}
+          path: gitops
+          branch: "release/${{ needs.build-scan-sign-push.outputs.image_tag }}"
+          commit-message: "release: sa-platform ${{ needs.build-scan-sign-push.outputs.image_tag }}"
+          title: "Release ${{ needs.build-scan-sign-push.outputs.image_tag }}"
+          body: >-
+            Actualiza el tag de imagen de los 7 componentes de sa-platform a
+            ${{ needs.build-scan-sign-push.outputs.image_tag }}. Generado
+            automaticamente por gitops-update.yml tras pasar tests, helm
+            lint, Trivy (sin CRITICAL) y firma con cosign. ArgoCD sincroniza
+            el cambio al hacer merge de este PR.
