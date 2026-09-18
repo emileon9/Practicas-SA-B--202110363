@@ -1,0 +1,49 @@
+# Application de ArgoCD para "ms-users". Fuente multiple (ArgoCD >= 2.6):
+#   - source 1: chart de Helm real, versionado en el repo de codigo
+#     (P8/helm/ms-users), con sus values.yaml base.
+#   - source 2 (ref "values"): unicamente el archivo de valores por
+#     ambiente (tag de imagen, replicas), versionado en el repositorio
+#     GitOps independiente. Es la parte que el workflow de actualizacion
+#     de version (Fase 3, gitops-update.yml) modifica via Pull Request.
+#
+# ArgoCD es el UNICO componente que aplica esto al cluster (sync
+# automatico con prune+selfHeal). Ningun workflow de GitHub Actions
+# ejecuta kubectl/helm contra el cluster.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform-ms-users
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-platform
+spec:
+  project: sa-platform
+
+  sources:
+    - repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+      targetRevision: master
+      path: P8/helm/ms-users
+      helm:
+        valueFiles:
+          - values.yaml
+          - $values/apps/ms-users/values-prod.yaml
+    - repoURL: https://github.com/<GITOPS_REPO_OWNER>/<GITOPS_REPO_NAME>.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sa-p5
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

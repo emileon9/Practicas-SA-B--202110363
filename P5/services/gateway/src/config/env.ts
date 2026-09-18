@@ -10,4 +10,8 @@ export const env = {
   notificationsServiceUrl: process.env.NOTIFICATIONS_SERVICE_URL || "http://localhost:4004",
   // TODO: URL real del servicio de autenticacion de la Practica 2 (P2/backend).
   authServiceUrl: process.env.AUTH_SERVICE_URL || "",
+  // Fallo inducido controlado (Practica 8, demo de rollback automatico de
+  // Argo Rollouts): probabilidad (0-1) de que /health responda 500. En
+  // 0 (default, no seteado) el comportamiento es identico al de P5/P7.
+  faultInjectRate: parseFloat(process.env.FAULT_INJECT_RATE || "0"),
 };

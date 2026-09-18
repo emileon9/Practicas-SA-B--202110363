@@ -42,6 +42,21 @@ extraEnv:
     value: "http://ms-orders:4003"
   - name: NOTIFICATIONS_SERVICE_URL
     value: "http://ms-notifications:4004"
+  # Fallo inducido controlado (Fase 6 / demo de rollback automatico). En 0
+  # (este valor base) el comportamiento de /health es identico al de P5/P7;
+  # solo el release de demostracion de la version defectuosa lo sobrescribe
+  # (ver P8/docs/INCIDENT.md).
+  - name: FAULT_INJECT_RATE
+    value: "0"
 
 runAsUser: 1000
 runAsGroup: 1000
+
+# Umbrales del AnalysisTemplate ejecutado en cada paso del canary
+# (analysistemplate.yaml). Ver P8/docs/GITOPS.md para la justificacion de
+# estos valores.
+canary:
+  analysis:
+    requests: 20
+    maxErrorRatePercent: 10
+    maxLatencySeconds: 1

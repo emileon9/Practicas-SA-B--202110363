@@ -1,0 +1,69 @@
+# AppProject de ArgoCD: agrupa las 7 Applications de sa-platform y limita
+# explicitamente de donde pueden venir manifiestos y a donde pueden
+# desplegar (namespace sa-p5 unicamente, el mismo que administra Terraform
+# en P8/terraform). Sin esto, cualquier Application quedaria en el proyecto
+# "default" sin restricciones.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: sa-platform
+  namespace: argocd
+spec:
+  description: >-
+    Plataforma de microservicios sa-platform (Practicas 4-8, USAC Software
+    Avanzado). Unico proyecto autorizado a desplegar en el namespace sa-p5.
+
+  sourceRepos:
+    # Repositorio de codigo: aqui viven los charts de Helm (P8/helm/*).
+    - "https://github.com/emileon9/Practicas-SA-B--202110363.git"
+    # Repositorio GitOps independiente (Fase 3, pendiente de crear -- ver
+    # P8/docs/GITOPS.md seccion 5). Reemplazar por la URL real en cuanto
+    # exista; mientras tanto ArgoCD rechazara sincronizar el segundo source
+    # de cada Application (comportamiento esperado y documentado).
+    - "https://github.com/<GITOPS_REPO_OWNER>/<GITOPS_REPO_NAME>.git"
+
+  destinations:
+    - namespace: sa-p5
+      server: https://kubernetes.default.svc
+
+  # Ningun recurso de alcance de clúster (Namespace, ClusterRole, CRDs): eso
+  # es responsabilidad de Terraform (namespace/quota/RBAC) y de la
+  # instalacion de Argo Rollouts/Kyverno, no de las Applications de la
+  # plataforma.
+  clusterResourceWhitelist: []
+
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: apps
+      kind: Deployment
+    - group: batch
+      kind: CronJob
+    - group: batch
+      kind: Job
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+    - group: argoproj.io
+      kind: Rollout
+    - group: argoproj.io
+      kind: AnalysisTemplate
+    - group: argoproj.io
+      kind: AnalysisRun

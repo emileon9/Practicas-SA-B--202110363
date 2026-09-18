@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { router } from "./routes";
 import { authMiddleware } from "./middleware/auth.middleware";
+import { env } from "./config/env";
 
 const app = express();
 
@@ -14,6 +15,14 @@ app.use(authMiddleware);
 app.use("/api", router);
 
 app.use(express.json());
-app.get("/health", (_req, res) => res.json({ status: "ok", service: "gateway" }));
+app.get("/health", (_req, res) => {
+  // Fallo inducido controlado (ver env.faultInjectRate): con la variable
+  // FAULT_INJECT_RATE sin definir (o en 0, el default), esta rama nunca se
+  // toma y la respuesta es identica a la de P5/P7.
+  if (env.faultInjectRate > 0 && Math.random() < env.faultInjectRate) {
+    return res.status(500).json({ status: "error", service: "gateway" });
+  }
+  res.json({ status: "ok", service: "gateway" });
+});
 
 export default app;

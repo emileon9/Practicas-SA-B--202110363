@@ -1,5 +1,20 @@
-apiVersion: apps/v1
-kind: Deployment
+{{/*
+Gateway es el unico componente de la plataforma desplegado como Rollout de
+Argo Rollouts en vez de Deployment: es el punto de entrada externo unico
+(ver Ingress en este mismo chart), lo que lo hace el candidato natural para
+demostrar entrega progresiva (canary). El resto de los 6 charts siguen
+siendo Deployment normales; el mismo patron de este archivo se replica
+igual a cualquiera de ellos si se decide extender el canary.
+
+Canary "basico" (sin service mesh): el Service de este chart (ClusterIP,
+selector app=gateway) balancea tráfico entre TODOS los pods -- estables y
+canary -- proporcional al numero de replicas de cada uno. El
+AnalysisTemplate (analysistemplate.yaml) por lo tanto mide el
+comportamiento agregado del Service durante cada paso, no trafico aislado
+al canary; se documenta esta limitacion en P8/docs/GITOPS.md.
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
 metadata:
   name: gateway
   namespace: {{ .Values.namespace }}
@@ -7,11 +22,26 @@ metadata:
     {{- include "gateway.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount | default 1 }}
+  revisionHistoryLimit: 3
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+    canary:
+      # Al menos 3 pasos de promocion, cada uno condicionado por el mismo
+      # AnalysisTemplate (disponibilidad + tasa de error + latencia de
+      # /health). Ningun paso promueve sin que el analisis pase.
+      steps:
+        - setWeight: 10
+        - analysis:
+            templates:
+              - templateName: gateway-canary-analysis
+        - setWeight: 30
+        - analysis:
+            templates:
+              - templateName: gateway-canary-analysis
+        - setWeight: 60
+        - analysis:
+            templates:
+              - templateName: gateway-canary-analysis
+        - setWeight: 100
   selector:
     matchLabels:
       app: gateway

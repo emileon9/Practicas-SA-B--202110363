@@ -8,8 +8,12 @@ metadata:
     {{- include "gateway.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
+    # Rollout (Argo Rollouts), no Deployment: gateway se desplega como
+    # Rollout (ver templates/rollout.yaml) para poder hacer canary. Argo
+    # Rollouts implementa el subrecurso "scale", por lo que el HPA funciona
+    # igual que contra un Deployment normal.
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
     name: gateway
   minReplicas: {{ .Values.hpa.minReplicas | default 2 }}
   maxReplicas: {{ .Values.hpa.maxReplicas | default 5 }}

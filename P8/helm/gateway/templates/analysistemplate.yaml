@@ -1,0 +1,69 @@
+{{/*
+AnalysisTemplate usado por cada paso del canary del Rollout de gateway
+(ver rollout.yaml). Mide, contra el endpoint real /health del propio
+servicio (el unico endpoint que gateway expone de forma consistente,
+ver P5/services/gateway/src/app.ts):
+  - disponibilidad: % de peticiones que responden HTTP 200
+  - tasa de error: lo mismo, expresado como umbral de fallo
+  - tiempo de respuesta: cada peticion debe responder dentro de
+    canary.analysis.maxLatencySeconds, usando "curl --max-time" como
+    limite por peticion (una peticion que excede el limite cuenta como
+    fallo, igual que un HTTP != 200)
+
+No requiere Prometheus ni ningun backend de metricas: usa el provider
+"job" de Argo Rollouts (ejecuta un Job de Kubernetes; si el contenedor
+termina con exit code != 0, el step de analysis falla y el Rollout
+aborta/revierte automaticamente, sin intervencion manual).
+*/}}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: gateway-canary-analysis
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  args:
+    - name: service-url
+      value: "http://gateway.{{ .Values.namespace }}.svc.cluster.local:{{ .Values.containerPort }}"
+
+  metrics:
+    - name: health-check
+      count: 1
+      failureLimit: 0
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 120
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: health-check
+                    image: curlimages/curl:8.10.1
+                    command: ["/bin/sh", "-c"]
+                    args:
+                      - |
+                        set -u
+                        URL="{{ "{{args.service-url}}" }}/health"
+                        TOTAL={{ .Values.canary.analysis.requests | default 20 }}
+                        MAX_ERROR_RATE={{ .Values.canary.analysis.maxErrorRatePercent | default 10 }}
+                        MAX_LATENCY_S={{ .Values.canary.analysis.maxLatencySeconds | default 1 }}
+                        errors=0
+                        i=1
+                        while [ "$i" -le "$TOTAL" ]; do
+                          code=$(curl -s -o /dev/null -w "%{http_code}" -m "$MAX_LATENCY_S" "$URL" || echo "000")
+                          if [ "$code" != "200" ]; then
+                            errors=$((errors + 1))
+                          fi
+                          i=$((i + 1))
+                        done
+                        error_rate=$((errors * 100 / TOTAL))
+                        echo "url=$URL requests=$TOTAL errors=$errors error_rate=${error_rate}% max_allowed=${MAX_ERROR_RATE}% max_latency_s=${MAX_LATENCY_S}"
+                        if [ "$error_rate" -gt "$MAX_ERROR_RATE" ]; then
+                          echo "FAIL: tasa de error ${error_rate}% supera el umbral ${MAX_ERROR_RATE}%"
+                          exit 1
+                        fi
+                        echo "PASS"
+                        exit 0
