@@ -1,0 +1,36 @@
+namespace: sa-p5
+
+configMapName: sa-platform-config
+logLevel: info
+timezone: America/Guatemala
+studentCarne: "202110363"
+
+# Host/puerto de PostgreSQL/RabbitMQ tal como los publica el chart de P5
+# (Bitnami postgresql/rabbitmq, fullnameOverride "sa-platform-postgresql" /
+# "sa-platform-rabbitmq" -- ver P5/charts/sa-platform/values.yaml). No se
+# reinstala la base de datos ni el broker aqui: solo se referencian.
+postgresql:
+  enabled: true
+  host: sa-platform-postgresql.sa-p5.svc.cluster.local
+  port: "5432"
+  database: sa_platform
+  username: sa_platform_app
+
+rabbitmq:
+  enabled: true
+  host: sa-platform-rabbitmq.sa-p5.svc.cluster.local
+  port: "5672"
+  username: sa_platform_app
+  summaryQueueName: cronjob.summary.q
+
+networkPolicy:
+  enabled: true
+  ingressControllerNamespace: ingress-nginx
+
+# Nombres de los SealedSecret que sustituyen a los Secret en texto plano.
+# El contenido real (encryptedData) se genera con kubeseal contra el
+# cluster de destino -- ver P8/docs/SECURITY.md. Los valores de este
+# archivo NUNCA incluyen una contrasena en texto plano.
+secrets:
+  dbSecretName: sa-platform-db-credentials
+  brokerSecretName: sa-platform-broker-credentials

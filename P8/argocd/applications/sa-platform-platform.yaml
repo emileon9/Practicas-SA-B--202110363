@@ -1,0 +1,38 @@
+# Application de plataforma: ConfigMap + NetworkPolicy + SealedSecrets
+# compartidos (P8/helm/platform). Sync-wave -1 para que ArgoCD la aplique
+# ANTES que los 7 charts de servicio (que referencian estos objetos por
+# nombre pero no los crean). PostgreSQL/RabbitMQ en si quedan fuera de esta
+# Application (ver P8/helm/platform/Chart.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: sa-platform
+
+  source:
+    repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+    targetRevision: master
+    path: P8/helm/platform
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sa-p5
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

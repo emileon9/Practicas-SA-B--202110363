@@ -106,8 +106,8 @@ prod) y `helm template` sobre los 7, sin errores.
 | Recurso compartido | Antes (chart padre) | Ahora |
 |---|---|---|
 | `ResourceQuota` / `LimitRange` / `Namespace` | Templates del chart padre | **Terraform** (`P8/terraform`), con los mismos valores reales que ya usaba P5 — ver sección 4 de ese README |
-| `ConfigMap sa-platform-config` (LOG_LEVEL, TZ, DB/BROKER host, etc.) | Template del chart padre | Referenciado por nombre (`sharedConfigMapName`, valor por defecto `sa-platform-config`) desde cada uno de los 7 charts; **quién crea ese ConfigMap queda pendiente de Fase 3** (candidato: un manifiesto de plataforma aplicado por ArgoCD antes que las apps, o un chart `platform` mínimo) |
-| `Secret` de PostgreSQL/RabbitMQ | Template del chart padre, generado desde `values-secrets.yaml` en texto plano local | Referenciado por nombre (`dbSecretName`/`brokerSecretName`); la generación real del `Secret` se resuelve en Fase 5 con Sealed Secrets/External Secrets, no con un `values-secrets.yaml` en texto plano |
+| `ConfigMap sa-platform-config` (LOG_LEVEL, TZ, DB/BROKER host, etc.) | Template del chart padre | **Resuelto**: nuevo chart `P8/helm/platform` (ConfigMap + NetworkPolicy + SealedSecrets), con su propia Application de ArgoCD (`sa-platform-platform`, sync-wave `-1` para aplicarse antes que los 7 servicios) |
+| `Secret` de PostgreSQL/RabbitMQ | Template del chart padre, generado desde `values-secrets.yaml` en texto plano local | **Resuelto con Sealed Secrets** (`P8/helm/platform/templates/sealedsecrets.yaml`): el ciphertext SI puede vivir en el repo GitOps; solo el controller de Sealed Secrets en el clúster puede descifrarlo. Los valores `encryptedData` de este repo son placeholders explícitos — deben regenerarse con `kubeseal` contra el clúster real (comando exacto en `P8/docs/SECURITY.md`) |
 | `Ingress` | Template del chart padre, apuntando al Service de `gateway` | Movido dentro del propio chart `gateway` (`P8/helm/gateway/templates/ingress.yaml`) |
 | `NetworkPolicy` | Template del chart padre | Pendiente: se recreará como manifiesto de plataforma en Fase 3, igual que el ConfigMap |
 

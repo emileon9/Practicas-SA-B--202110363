@@ -1,0 +1,12 @@
+apiVersion: v2
+name: platform
+description: >-
+  Recursos de plataforma compartidos por los 7 charts de sa-platform:
+  ConfigMap no sensible, NetworkPolicies de aislamiento y las credenciales
+  de PostgreSQL/RabbitMQ como SealedSecret (nunca como Secret en texto
+  plano). No incluye PostgreSQL ni RabbitMQ en si: esos siguen
+  provisionados, sin cambios, por P5/charts/sa-platform (fuera del alcance
+  de P8, ver P8/docs/SECURITY.md).
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
