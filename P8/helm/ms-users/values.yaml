@@ -1,0 +1,32 @@
+# Chart independiente de P8 (antes subchart de P5/charts/sa-platform).
+# Valores por defecto; values-dev.yaml / values-prod.yaml sobrescriben lo
+# que cambia por ambiente. El tag de imagen se deja vacio a proposito: lo
+# inyecta el flujo GitOps (Fase 3), nunca "latest".
+namespace: sa-p5
+imagePullPolicy: IfNotPresent
+sharedConfigMapName: sa-platform-config
+dbSecretName: sa-platform-db-credentials
+brokerSecretName: sa-platform-broker-credentials
+image:
+  repository: ghcr.io/emileon9/sa-platform/ms-users
+  tag: ""
+containerPort: 4001
+replicaCount: 2
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {cpu: 200m, memory: 128Mi}
+probes:
+  startup: {periodSeconds: 5, failureThreshold: 10}
+  liveness: {initialDelaySeconds: 5, periodSeconds: 10, failureThreshold: 3}
+  readiness: {initialDelaySeconds: 2, periodSeconds: 5, failureThreshold: 3}
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+needsDbSecret: false
+needsBrokerSecret: false
+extraEnv: []
+
+runAsUser: 1000
+runAsGroup: 1000

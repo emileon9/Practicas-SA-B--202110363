@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ms-notifications
+description: Microservicio de notificaciones; consumidor del flujo asincrono de resumenes (REST + RabbitMQ), heredado de la Practica 4.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

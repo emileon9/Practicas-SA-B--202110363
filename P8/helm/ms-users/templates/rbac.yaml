@@ -1,0 +1,39 @@
+{{/* ServiceAccount dedicado (Queda prohibido el ServiceAccount default) con
+     Role/RoleBinding de minimo privilegio: solo puede leer su propio
+     ConfigMap, nada mas del API de Kubernetes. */}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ms-users-sa
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "ms-users.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ms-users-role
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "ms-users.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: [{{ .Values.sharedConfigMapName | default "sa-platform-config" | quote }}]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ms-users-rolebinding
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "ms-users.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ms-users-role
+subjects:
+  - kind: ServiceAccount
+    name: ms-users-sa
+    namespace: {{ .Values.namespace }}

@@ -1,0 +1,3 @@
+# Overlay "dev": falla rapido (menos reintentos) para detectar errores de
+# configuracion sin esperar el backoff completo de prod.
+backoffLimit: 1

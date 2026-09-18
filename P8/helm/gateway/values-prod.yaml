@@ -1,0 +1,7 @@
+# Overlay de ambiente "prod": mantiene el HPA y las réplicas base definidas
+# en values.yaml (ya dimensionadas en P5 para el clúster de referencia);
+# este archivo existe para que el ambiente prod tenga su propio punto de
+# override explícito (p.ej. si en el futuro cambia el tamaño del clúster).
+replicaCount: 2
+hpa:
+  enabled: true

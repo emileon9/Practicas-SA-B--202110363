@@ -1,0 +1,9 @@
+apiVersion: v2
+name: cronjob-heartbeat
+description: >-
+  CronJob que inserta en PostgreSQL la fecha/hora GMT-6 de ejecucion y el
+  carne del estudiante, cada 2 minutos. Heredado de la Practica 5, extraido
+  como chart independiente en la Practica 8.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

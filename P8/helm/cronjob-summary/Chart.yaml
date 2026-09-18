@@ -1,0 +1,10 @@
+apiVersion: v2
+name: cronjob-summary
+description: >-
+  CronJob que calcula el resumen de ejecuciones por hora y lo publica en la
+  cola durable de RabbitMQ consumida por ms-notifications, cada 10 minutos.
+  Heredado de la Practica 5, extraido como chart independiente en la
+  Practica 8.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

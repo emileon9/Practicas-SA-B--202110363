@@ -1,0 +1,33 @@
+{{/*
+Unica puerta de entrada externa al cluster: el Ingress solo enruta hacia el
+Service del propio gateway. Ningun microservicio, la DB ni el broker se
+exponen aqui ni con NodePort/LoadBalancer (todos usan ClusterIP).
+*/}}
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway-ingress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+  {{- if .Values.ingress.annotations }}
+  annotations:
+    {{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | default "nginx" }}
+  rules:
+    - host: {{ .Values.ingress.host | required "ingress.host es obligatorio" }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: {{ .Values.containerPort }}
+{{- end }}

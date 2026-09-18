@@ -1,0 +1,2 @@
+# Overlay "prod": mantiene los reintentos base definidos en values.yaml.
+backoffLimit: 2

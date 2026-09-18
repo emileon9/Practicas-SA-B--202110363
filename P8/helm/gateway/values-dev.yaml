@@ -1,0 +1,10 @@
+# Overlay de ambiente "dev": un solo replica, sin HPA (carga baja y
+# predecible en un clúster local), pensado para iterar rápido.
+replicaCount: 1
+hpa:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 2
+ingress:
+  enabled: true
+  host: sa-platform.dev.local

@@ -65,7 +65,7 @@ del `AnalysisTemplate` de Argo Rollouts (Fase 4).
 | `cd.yml` ejecuta `helm upgrade --install` contra el clúster desde Actions | Eliminar el despliegue de `cd.yml`. El pipeline de código termina en: build → escaneo → firma → push → PR al repo GitOps. ArgoCD pasa a ser quien sincroniza. |
 | Las imágenes se etiquetan también como `latest` | Dejar de publicar `latest`; usar únicamente tags semánticos derivados de tags de Git (`vX.Y.Z`), consistente con la convención de tag-por-commit que P7 ya usaba parcialmente. |
 | `ResourceQuota`/`LimitRange`/namespace se crean **desde el chart de Helm** | Es el mismo tipo de solape que pide resolver la rúbrica de P8 (Terraform debe administrar namespace/quotas/RBAC). Se mueven esos recursos de *infraestructura de plataforma* a Terraform y se documentan como responsabilidad de Terraform; Helm conserva únicamente los `resources.requests/limits` **por contenedor** (configuración de la aplicación, no de la plataforma). |
-| Un solo chart umbrella para 7 componentes, en vez de "un chart por microservicio" | Se evalúa mantener el chart umbrella (ya parametrizado por servicio vía subcharts locales `gateway`, `ms-users`, etc., con `values-dev.yaml`/`values-prod.yaml`) en vez de fragmentarlo en 7 charts independientes, para no duplicar templates que ya funcionan. Se documentará explícitamly esta decisión en `docs/GITOPS.md` como equivalente funcional al requisito. |
+| Un solo chart umbrella para 7 componentes, en vez de "un chart por microservicio" | **Aplicado.** Se fragmentó en 7 charts de Helm independientes (`P8/helm/<componente>`), cada uno con su `Chart.yaml`, `values.yaml`, `values-dev.yaml` y `values-prod.yaml` propios. Los recursos que antes compartían (ConfigMap, Secrets, Ingress, ResourceQuota/LimitRange) se resolvieron sin duplicarlos — ver el detalle en [docs/GITOPS.md, sección 4](docs/GITOPS.md#4-decisión-un-chart-de-helm-independiente-por-componente). |
 | No existe repositorio GitOps independiente | Se prepara toda la estructura esperada (`argocd/`, convenciones de path/branch) dentro de este repo, documentando exactamente qué se debe crear manualmente como repo independiente en GitHub (Fase 3). |
 
 ### 1.5 Qué reutilizar sin cambios
@@ -93,7 +93,7 @@ tabla de evidencias.
 | Fase | Contenido | Estado |
 |---|---|---|
 | 1 | Diagnóstico (este documento) | ✅ |
-| 2 | Estructura P8, Terraform, Helm, tests base, docs base | 🔄 en progreso |
+| 2 | Estructura P8, Terraform, Helm (7 charts independientes), tests base, docs base | 🔄 en progreso — Terraform y los 7 charts listos y validados con `helm lint`/`helm template`; falta `terraform validate` real (Terraform no está instalado en esta máquina todavía) y los tests base |
 | 3 | GitOps: manifiestos, ArgoCD Application, flujo de actualización de imagen | ⬜ pendiente |
 | 4 | Argo Rollouts: canary de 3+ pasos, `AnalysisTemplate`, rollback automático | ⬜ pendiente |
 | 5 | Seguridad de cadena de suministro: Trivy, SBOM, Cosign, Kyverno, secretos | ⬜ pendiente |
@@ -105,24 +105,38 @@ tabla de evidencias.
 
 ```
 P8/
-├── README.md          Este archivo (diagnóstico + plan)
-└── docs/
-    └── GITOPS.md       Arquitectura objetivo GitOps (repos, ArgoCD, flujo)
+├── README.md              Este archivo (diagnóstico + plan)
+├── docs/
+│   └── GITOPS.md           Arquitectura GitOps (repos, ArgoCD, decisiones)
+├── terraform/              Namespace, ResourceQuota, LimitRange, RBAC de ArgoCD
+│   ├── providers.tf
+│   ├── variables.tf
+│   ├── main.tf
+│   └── outputs.tf
+└── helm/                   7 charts independientes (uno por componente)
+    ├── gateway/
+    ├── ms-users/
+    ├── ms-products/
+    ├── ms-orders/
+    ├── ms-notifications/
+    ├── cronjob-heartbeat/
+    └── cronjob-summary/
 ```
 
 ## 4. Entorno disponible para la demostración
 
-Verificado durante el diagnóstico (no asumido):
+Verificado con comandos reales durante esta fase (no asumido):
 
-- No hay clúster de Kubernetes accesible remotamente (GKE de P6 fue
-  eliminado). Solo existen contextos locales potenciales
-  (`docker-desktop`/`minikube`) en la máquina del estudiante.
-- No hay ArgoCD, Argo Rollouts ni Kyverno instalados todavía en ningún
-  clúster — se preparará su manifiesto/instrucciones de instalación, pero la
-  instalación y sincronización real requiere que el estudiante tenga un
-  clúster local encendido.
-- No existe todavía un segundo repositorio de GitHub para manifiestos
-  GitOps (Fase 3 deja preparado qué crear manualmente).
+| Herramienta | Estado en esta máquina |
+|---|---|
+| `helm` | ✅ instalado (v4.2.4) — los 7 charts pasan `helm lint`/`helm template` |
+| `kubectl` | ✅ instalado (v1.32.2) |
+| `docker` | ✅ instalado |
+| `k6` | ✅ instalado (v2.2.0) — se reutilizará para los load tests (Fase 6) |
+| `terraform` | ❌ no instalado — el código en `terraform/` no se ha podido validar con `terraform validate`/`plan`/`apply` todavía |
+| `cosign`, `trivy`, `syft`, `argocd` (CLI), `kubectl-argo-rollouts` | ❌ no instalados localmente — se usarán dentro del pipeline de GitHub Actions (Fase 5) o deben instalarse en el clúster/máquina para probarlos en local |
+| Clúster de Kubernetes accesible | ❌ **no hay ninguno corriendo ahora mismo**: `kubectl config get-contexts` muestra los contextos `docker-desktop` y `minikube`, pero ninguno tiene `current-context` fijado y `kubectl get nodes` no logra conectar a ninguno de los dos. Es necesario **encender Docker Desktop Kubernetes o `minikube start`** antes de instalar ArgoCD/Argo Rollouts/Kyverno y demostrar el flujo end-to-end. |
+| Repositorio GitOps independiente | ❌ no existe todavía — el estudiante lo crea manualmente (ver [docs/GITOPS.md, sección 5](docs/GITOPS.md#5-qué-debe-crear-manualmente-el-estudiante-en-github)) |
 
-Esto se documentará con más detalle, y sin inventar resultados, en cada fase
-según se vaya ejecutando cada herramienta.
+No hay GKE de P6 disponible (fue eliminado el 05/09/2026 por costo), así que
+la demo de P8 se hace contra un clúster local.

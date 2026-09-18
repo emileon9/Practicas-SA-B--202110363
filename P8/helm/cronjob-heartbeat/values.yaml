@@ -1,0 +1,25 @@
+# Chart independiente de P8 (antes CronJob embebido directamente en
+# P5/charts/sa-platform/templates/cronjob-heartbeat.yaml).
+namespace: sa-p5
+imagePullPolicy: IfNotPresent
+sharedConfigMapName: sa-platform-config
+dbSecretName: sa-platform-db-credentials
+
+image:
+  repository: ghcr.io/emileon9/sa-platform/cronjob-heartbeat
+  tag: ""
+
+schedule: "*/2 * * * *"
+concurrencyPolicy: Forbid
+backoffLimit: 2
+successfulJobsHistoryLimit: 3
+failedJobsHistoryLimit: 3
+
+# Usuario de sistema "app" (uid 100 / gid 101) creado en el Dockerfile
+# (python:3.12-slim) - ver P5/docs/security.md.
+runAsUser: 100
+runAsGroup: 101
+
+resources:
+  requests: {cpu: 25m, memory: 32Mi}
+  limits: {cpu: 100m, memory: 64Mi}

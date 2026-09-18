@@ -1,0 +1,89 @@
+{{/* ServiceAccount dedicado (prohibido el default) con Role de minimo
+     privilegio: solo puede leer el ConfigMap compartido no sensible. */}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cronjob-heartbeat-sa
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "cronjob-heartbeat.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cronjob-heartbeat-role
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "cronjob-heartbeat.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: [{{ .Values.sharedConfigMapName | default "sa-platform-config" | quote }}]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cronjob-heartbeat-rolebinding
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "cronjob-heartbeat.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cronjob-heartbeat-role
+subjects:
+  - kind: ServiceAccount
+    name: cronjob-heartbeat-sa
+    namespace: {{ .Values.namespace }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-heartbeat
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "cronjob-heartbeat.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.schedule | default "*/2 * * * *" | quote }}
+  concurrencyPolicy: {{ .Values.concurrencyPolicy | default "Forbid" }}
+  successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit | default 3 }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.backoffLimit | default 2 }}
+      template:
+        metadata:
+          labels:
+            {{- include "cronjob-heartbeat.labels" . | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: cronjob-heartbeat-sa
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.runAsUser }}
+            runAsGroup: {{ .Values.runAsGroup }}
+          containers:
+            - name: cronjob-heartbeat
+              image: "{{ required "image.repository es obligatorio" .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.imagePullPolicy | default "IfNotPresent" }}
+              envFrom:
+                - configMapRef:
+                    name: {{ .Values.sharedConfigMapName | default "sa-platform-config" }}
+                - secretRef:
+                    name: {{ .Values.dbSecretName | default "sa-platform-db-credentials" }}
+              securityContext:
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+          volumes:
+            - name: tmp
+              emptyDir: {}

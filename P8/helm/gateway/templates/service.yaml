@@ -1,0 +1,17 @@
+{{/* ClusterIP unicamente: este microservicio nunca se expone fuera del
+     cluster (ni NodePort ni LoadBalancer). Solo el gateway lo alcanza. */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: gateway
+  ports:
+    - port: {{ .Values.containerPort }}
+      targetPort: {{ .Values.containerPort }}
+      protocol: TCP

@@ -71,26 +71,49 @@ clúster.
   path se documentan en `P8/argocd/` (Fase 3) con los valores reales usados,
   no antes.
 
-## 4. Decisión: chart único (`sa-platform`) vs. un chart por servicio
+## 4. Decisión: un chart de Helm independiente por componente
 
-La Práctica 8 pide "un chart por microservicio". El repositorio ya tiene un
-único chart umbrella (`P5/charts/sa-platform`) donde cada uno de los 7
-componentes es un subchart local completamente parametrizado (imagen,
-réplicas, recursos, probes, HPA) con overlays `values-dev.yaml` /
-`values-prod.yaml`.
+La Práctica 8 pide "un chart por microservicio". El repositorio ya tenía un
+único chart umbrella (`P5/charts/sa-platform`) donde cada componente era un
+subchart local (imagen, réplicas, recursos, probes, HPA ya parametrizados),
+más un puñado de recursos compartidos definidos solo en el chart padre:
+`ConfigMap` no sensible (`sa-platform-config`), dos `Secret` generados desde
+`values-secrets.yaml` (credenciales de PostgreSQL/RabbitMQ), `Ingress`,
+`NetworkPolicy`, `ResourceQuota`/`LimitRange` de namespace.
 
-Fragmentar esto en 7 `Chart.yaml` independientes duplicaría templates
-idénticos (Deployment, Service, HPA) sin ganancia real, y contradice la
-instrucción de no duplicar manifiestos innecesariamente. La decisión tomada
-para P8 es **mantener el chart umbrella** y tratar cada subchart
-(`gateway`, `ms-users`, `ms-products`, `ms-orders`, `ms-notifications`) como
-el equivalente funcional de "un chart por microservicio": cada uno tiene su
-propio `values.yaml` de subchart, su propio `image.repository`/`image.tag`,
-y puede versionarse/desplegarse de forma independiente vía
-`--set <servicio>.image.tag=vX.Y.Z`.
+**Decisión tomada (confirmada explícitamente para P8): fragmentar en 7
+charts de Helm completamente independientes**, uno por componente real:
 
-Esto se ampliará con el detalle real de `values-dev.yaml`/`values-prod.yaml`
-para P8 en la Fase 2.
+```
+P8/helm/
+├── gateway/              (incluye su propio Ingress)
+├── ms-users/
+├── ms-products/
+├── ms-orders/
+├── ms-notifications/     (unico que consume DB + broker)
+├── cronjob-heartbeat/
+└── cronjob-summary/      (consume DB + broker)
+```
+
+Cada uno tiene `Chart.yaml`, `values.yaml`, `values-dev.yaml`,
+`values-prod.yaml` y sus propios templates (sin heredar `_helpers.tpl` de
+ningún chart padre). Verificado con `helm lint` (base + overlay dev + overlay
+prod) y `helm template` sobre los 7, sin errores.
+
+**Qué se compartía entre componentes y cómo quedó resuelto al fragmentar**
+(para no perder esa cohesión ni terminar con manifiestos duplicados):
+
+| Recurso compartido | Antes (chart padre) | Ahora |
+|---|---|---|
+| `ResourceQuota` / `LimitRange` / `Namespace` | Templates del chart padre | **Terraform** (`P8/terraform`), con los mismos valores reales que ya usaba P5 — ver sección 4 de ese README |
+| `ConfigMap sa-platform-config` (LOG_LEVEL, TZ, DB/BROKER host, etc.) | Template del chart padre | Referenciado por nombre (`sharedConfigMapName`, valor por defecto `sa-platform-config`) desde cada uno de los 7 charts; **quién crea ese ConfigMap queda pendiente de Fase 3** (candidato: un manifiesto de plataforma aplicado por ArgoCD antes que las apps, o un chart `platform` mínimo) |
+| `Secret` de PostgreSQL/RabbitMQ | Template del chart padre, generado desde `values-secrets.yaml` en texto plano local | Referenciado por nombre (`dbSecretName`/`brokerSecretName`); la generación real del `Secret` se resuelve en Fase 5 con Sealed Secrets/External Secrets, no con un `values-secrets.yaml` en texto plano |
+| `Ingress` | Template del chart padre, apuntando al Service de `gateway` | Movido dentro del propio chart `gateway` (`P8/helm/gateway/templates/ingress.yaml`) |
+| `NetworkPolicy` | Template del chart padre | Pendiente: se recreará como manifiesto de plataforma en Fase 3, igual que el ConfigMap |
+
+Ningún nombre de servicio, puerto, usuario (`runAsUser`/`runAsGroup`) ni
+valor de recursos fue inventado: son los mismos que ya usaban los subcharts
+de P5 (`P5/charts/sa-platform/charts/<servicio>/values.yaml`).
 
 ## 5. Qué debe crear manualmente el estudiante en GitHub
 
