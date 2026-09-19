@@ -204,6 +204,16 @@ Resumen:
 - **Versionamiento semántico**: `gitops-update.yml` solo se dispara con
   tags `vX.Y.Z`; ninguna imagen se publica ni referencia como `latest`.
 
+**Artefactos de seguridad versionados** (además de los que el pipeline sube
+como artefactos de Actions, que caducan y exigen sesión):
+
+| Artefacto | Ruta |
+|---|---|
+| Reporte de Trivy sobre la imagen firmada | [security/evidencia/trivy-gateway-v1.0.0.txt](security/evidencia/trivy-gateway-v1.0.0.txt) |
+| SBOM (CycloneDX 1.7, 110 componentes) | [security/sbom/gateway-v1.0.0.cdx.json](security/sbom/gateway-v1.0.0.cdx.json) |
+| Salida de `cosign verify` | [security/evidencia/cosign-verify.txt](security/evidencia/cosign-verify.txt) |
+| Rechazo de las 3 políticas de Kyverno | [security/evidencia/kyverno-rechazo.txt](security/evidencia/kyverno-rechazo.txt) |
+
 ## 9. Fallo inducido y rollback automático
 
 `gateway` incluye un hook de fallo controlado, apagado por defecto
