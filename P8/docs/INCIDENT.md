@@ -96,16 +96,3 @@ Un segundo control, más barato: validar en el pipeline que
 de pruebas. El defecto de este incidente era precisamente una variable de
 configuración que nunca debió llegar a producción con ese valor.
 
-## Nota sobre un segundo rollback observado
-
-Antes de este incidente hubo un rollback distinto, causado por un error de
-infraestructura y no por una métrica: el Job del `AnalysisTemplate` no
-declaraba `runAsNonRoot` ni límites de recursos, así que las políticas de
-Kyverno (`disallow-root-user`, `require-resource-limits`) lo rechazaron en
-admission, el `AnalysisRun` acumuló errores y el rollout se abortó
-(`AnalysisRun gateway-5cf54f64f-2-1`, estado `Error`).
-
-Se deja registrado porque es un resultado legítimo del sistema: las
-políticas de admisión se aplican a **todos** los Pods del namespace,
-incluidos los que crea la propia maquinaria de entrega. El Job se corrigió
-para cumplirlas; las políticas no se relajaron.

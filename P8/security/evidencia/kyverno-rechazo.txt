@@ -1,0 +1,55 @@
+======================================================================
+ EVIDENCIA: despliegue rechazado por politica de admision (Kyverno)
+ Fecha: 2026-09-19 18:26:33 UTC
+ Cluster: docker-desktop   Namespace: sa-p5
+======================================================================
+
+### Politicas activas
+NAME                      ADMISSION   BACKGROUND   READY   AGE   MESSAGE
+disallow-latest-tag       true        true         True    11h   Ready
+disallow-root-user        true        true         True    11h   Ready
+require-resource-limits   true        true         True    11h   Ready
+
+----------------------------------------------------------------------
+### 1) Imagen con tag 'latest'   ->   debe ser RECHAZADO
+$ kubectl apply -n sa-p5 -f P8/security/kyverno/test-invalid-latest.yaml
+Error from server: error when creating "P8/security/kyverno/test-invalid-latest.yaml": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/sa-p5/test-invalid-latest was blocked due to the following policies 
+
+disallow-latest-tag:
+  validate-image-tag: 'validation error: No se permite el tag "latest". Usa un tag semantico derivado de un tag de Git (ej. v1.2.0). rule validate-image-tag failed at path /spec/containers/0/image/'
+disallow-root-user:
+  validate-runAsNonRoot: 'validation error: Se requiere securityContext.runAsNonRoot=true a nivel de Pod o de cada contenedor. No se permiten contenedores que puedan correr como root. rule validate-runAsNonRoot[0] failed at path /spec/securityContext/runAsNonRoot/ rule validate-runAsNonRoot[1] failed at path /spec/containers/0/securityContext/'
+
+----------------------------------------------------------------------
+### 2) Contenedor sin runAsNonRoot   ->   debe ser RECHAZADO
+$ kubectl apply -n sa-p5 -f P8/security/kyverno/test-invalid-root.yaml
+Error from server: error when creating "P8/security/kyverno/test-invalid-root.yaml": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/sa-p5/test-invalid-root was blocked due to the following policies 
+
+disallow-root-user:
+  validate-runAsNonRoot: 'validation error: Se requiere securityContext.runAsNonRoot=true a nivel de Pod o de cada contenedor. No se permiten contenedores que puedan correr como root. rule validate-runAsNonRoot[0] failed at path /spec/securityContext/runAsNonRoot/ rule validate-runAsNonRoot[1] failed at path /spec/containers/0/securityContext/'
+
+----------------------------------------------------------------------
+### 3) Contenedor sin requests/limits   ->   debe ser RECHAZADO
+
+NOTA: esta prueba se ejecuta en el namespace 'default' a proposito.
+En sa-p5 el LimitRange que crea Terraform (sa-platform-limits) inyecta
+valores por defecto ANTES de que Kyverno evalue el Pod, asi que la
+politica nunca llega a dispararse ahi: son dos controles en capas.
+En un namespace sin LimitRange, Kyverno si lo rechaza por si solo.
+
+$ sed '/namespace: sa-p5/d' P8/security/kyverno/test-invalid-no-limits.yaml | kubectl apply -n default -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/default/test-invalid-no-limits was blocked due to the following policies 
+
+require-resource-limits:
+  validate-resources: 'validation error: Todo contenedor debe declarar resources.requests y resources.limits de cpu y memory. rule validate-resources failed at path /spec/containers/0/resources/limits/'
+
+----------------------------------------------------------------------
+### Comprobacion: ninguno de los tres Pods llego a crearse
+$ kubectl get pods -n sa-p5 | grep test-invalid
+(ninguno: los tres fueron rechazados en admission)

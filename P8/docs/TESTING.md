@@ -5,7 +5,7 @@ métrica ni endpoint fue inventado; todos existen en
 [P5/services](../../P5/services) y están documentados en
 [P7/README.md sección 3](../../P7/README.md)).
 
-## 1. Unit tests (ya existían, agregados en P7 — no se duplican aquí)
+## 1. Unit tests 
 
 Ver [P7/README.md sección 6](../../P7/README.md#6-tests):
 `P5/services/*/tests`, corridos por el job `test-node`/`test-python` de

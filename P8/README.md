@@ -226,10 +226,24 @@ pendientes de la demo real: **[docs/INCIDENT.md](docs/INCIDENT.md)**.
 | Ejecución exitosa del pipeline | https://github.com/emileon9/Practicas-SA-B--202110363/actions/runs/35430071282 (7/7 imágenes: Trivy + SBOM + push + cosign, y PR al repo GitOps) |
 | Pull Request de actualización de versión | https://github.com/emileon9/practica8-gitops/pull/1 (`Release v1.0.0`, abierto automáticamente por el pipeline) |
 | Reversión automática | `AnalysisRun gateway-68766c6b6f-3-1` → `Failed` (20% de error contra umbral de 10%) → `RolloutAborted` → vuelta a `v1.0.0` en 55 s, sin intervención. Detalle completo: [docs/INCIDENT.md](docs/INCIDENT.md) |
-| Despliegue rechazado por política | `kubectl apply -n sa-p5 -f security/kyverno/test-invalid-latest.yaml` y `test-invalid-root.yaml` → rechazados por `validate.kyverno.svc-fail`. El de `test-invalid-no-limits.yaml` se rechaza en un namespace sin `LimitRange` (en `sa-p5` el `LimitRange` de Terraform inyecta los defaults antes de que Kyverno evalúe) — ver [docs/SECURITY.md](docs/SECURITY.md) |
+| Despliegue rechazado por política | https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P8/security/evidencia/kyverno-rechazo.txt — salida real de las tres políticas rechazando en admission (`latest`, root, sin límites) |
 | Bloqueo por vulnerabilidad crítica | https://github.com/emileon9/Practicas-SA-B--202110363/actions/runs/35429661801 — Trivy detuvo el release por `CVE-2026-59873` (CRITICAL) antes de publicar o firmar; corregido en el commit `435d501` |
 | Imagen firmada | `ghcr.io/emileon9/sa-platform/gateway:v1.0.0` — firma verificada con `cosign verify`; certificado emitido a `.../gitops-update.yml@refs/tags/v1.0.0` por `https://token.actions.githubusercontent.com` |
-| Reporte de prueba de carga | `P5/scripts/load-test/results/summary.json` (ruta; se genera al correr el load test) |
+| Reporte de prueba de carga | https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P5/scripts/load-test/results/summary.json — 9356 peticiones, p95 100.67 ms, 0.00% de error; ambos umbrales (`rate<0.05`, `p(95)<1500`) en `ok: true` |
+| Video demostrativo | PENDIENTE — completar con la URL y el minutaje de la sección siguiente |
+
+## Video demostrativo
+
+| Punto | Minuto |
+|---|---|
+| Arquitectura | 00:00 |
+| Pipeline (tests, helm lint, Trivy, SBOM, Cosign) | 00:00 |
+| ArgoCD `Synced` + `Healthy` | 00:00 |
+| Canary por pasos con AnalysisTemplate | 00:00 |
+| Fallo inducido | 00:00 |
+| Reversión automática | 00:00 |
+| Política de admisión rechazando un despliegue | 00:00 |
+| Seguridad (firma verificada, secretos sellados) | 00:00 |
 
 ---
 
