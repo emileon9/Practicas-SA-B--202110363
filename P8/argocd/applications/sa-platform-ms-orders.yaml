@@ -27,7 +27,7 @@ spec:
         valueFiles:
           - values.yaml
           - $values/apps/ms-orders/values-prod.yaml
-    - repoURL: https://github.com/<GITOPS_REPO_OWNER>/<GITOPS_REPO_NAME>.git
+    - repoURL: https://github.com/emileon9/practica8-gitops.git
       targetRevision: main
       ref: values
 

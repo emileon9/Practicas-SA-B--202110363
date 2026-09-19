@@ -16,11 +16,11 @@ spec:
   sourceRepos:
     # Repositorio de codigo: aqui viven los charts de Helm (P8/helm/*).
     - "https://github.com/emileon9/Practicas-SA-B--202110363.git"
-    # Repositorio GitOps independiente (Fase 3, pendiente de crear -- ver
-    # P8/docs/GITOPS.md seccion 5). Reemplazar por la URL real en cuanto
-    # exista; mientras tanto ArgoCD rechazara sincronizar el segundo source
-    # de cada Application (comportamiento esperado y documentado).
-    - "https://github.com/<GITOPS_REPO_OWNER>/<GITOPS_REPO_NAME>.git"
+    # Repositorio GitOps independiente (creado -- ver P8/docs/GITOPS.md
+    # seccion 5). Falta configurar en este repo el secret GITOPS_REPO_TOKEN
+    # y las variables GITOPS_REPO_OWNER/GITOPS_REPO_NAME antes de que
+    # gitops-update.yml pueda abrir Pull Requests aqui.
+    - "https://github.com/emileon9/practica8-gitops.git"
 
   destinations:
     - namespace: sa-p5
@@ -67,3 +67,5 @@ spec:
       kind: AnalysisTemplate
     - group: argoproj.io
       kind: AnalysisRun
+    - group: bitnami.com
+      kind: SealedSecret

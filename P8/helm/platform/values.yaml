@@ -5,22 +5,25 @@ logLevel: info
 timezone: America/Guatemala
 studentCarne: "202110363"
 
-# Host/puerto de PostgreSQL/RabbitMQ tal como los publica el chart de P5
-# (Bitnami postgresql/rabbitmq, fullnameOverride "sa-platform-postgresql" /
-# "sa-platform-rabbitmq" -- ver P5/charts/sa-platform/values.yaml). No se
-# reinstala la base de datos ni el broker aqui: solo se referencian.
+# Host/puerto de PostgreSQL/RabbitMQ tal como REALMENTE corren en el
+# cluster (verificado con `kubectl get all -n sa-p5` y `helm get values
+# sa-platform -n sa-p5`: fullnameOverride real "sa-postgresql"/
+# "sa-rabbitmq", usuario real "sa_app" -- no "sa-platform-postgresql" ni
+# "sa_platform_app" como se habia asumido antes de inspeccionar el cluster
+# real). No se reinstala la base de datos ni el broker aqui: solo se
+# referencian.
 postgresql:
   enabled: true
-  host: sa-platform-postgresql.sa-p5.svc.cluster.local
+  host: sa-postgresql.sa-p5.svc.cluster.local
   port: "5432"
   database: sa_platform
-  username: sa_platform_app
+  username: sa_app
 
 rabbitmq:
   enabled: true
-  host: sa-platform-rabbitmq.sa-p5.svc.cluster.local
+  host: sa-rabbitmq.sa-p5.svc.cluster.local
   port: "5672"
-  username: sa_platform_app
+  username: sa_app
   summaryQueueName: cronjob.summary.q
 
 networkPolicy:
