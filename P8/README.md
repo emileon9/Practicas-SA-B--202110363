@@ -230,20 +230,6 @@ pendientes de la demo real: **[docs/INCIDENT.md](docs/INCIDENT.md)**.
 | Bloqueo por vulnerabilidad crítica | https://github.com/emileon9/Practicas-SA-B--202110363/actions/runs/35429661801 — Trivy detuvo el release por `CVE-2026-59873` (CRITICAL) antes de publicar o firmar; corregido en el commit `435d501` |
 | Imagen firmada | `ghcr.io/emileon9/sa-platform/gateway:v1.0.0` — firma verificada con `cosign verify`; certificado emitido a `.../gitops-update.yml@refs/tags/v1.0.0` por `https://token.actions.githubusercontent.com` |
 | Reporte de prueba de carga | `P5/scripts/load-test/results/summary.json` (ruta; se genera al correr el load test) |
-| Video demostrativo | PENDIENTE |
-
-## Video demostrativo
-
-| Punto | Minuto |
-|---|---|
-| Arquitectura | 00:00 |
-| Pipeline | 00:00 |
-| ArgoCD | 00:00 |
-| Canary | 00:00 |
-| Fallo | 00:00 |
-| Rollback | 00:00 |
-| Política rechazada | 00:00 |
-| Seguridad | 00:00 |
 
 ---
 
