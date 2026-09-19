@@ -39,9 +39,30 @@ spec:
             template:
               spec:
                 restartPolicy: Never
+                # Este Job tambien pasa por el admission control de Kyverno
+                # (disallow-root-user y require-resource-limits aplican a
+                # TODO Pod del namespace, includo los que crea el propio
+                # analisis). Sin este securityContext y estos resources,
+                # Kyverno rechaza el Job, el AnalysisRun termina en Error y
+                # el Rollout se aborta por un fallo de infraestructura en vez
+                # de por una metrica real. El uid 100 es "curl_user", el
+                # usuario no-root que trae la imagen curlimages/curl.
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 100
+                  runAsGroup: 100
                 containers:
                   - name: health-check
                     image: curlimages/curl:8.10.1
+                    securityContext:
+                      runAsNonRoot: true
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                        drop: ["ALL"]
+                    resources:
+                      requests: {cpu: 10m, memory: 32Mi}
+                      limits: {cpu: 100m, memory: 64Mi}
                     command: ["/bin/sh", "-c"]
                     args:
                       - |
