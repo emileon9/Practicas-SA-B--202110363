@@ -17,9 +17,9 @@ APPLICATION / CODE REPOSITORY (este repo)
    - pipeline CI (tests, helm lint, trivy, sbom, build, cosign sign)
    - NO despliega nada al clúster
 
-GITOPS / MANIFEST REPOSITORY (repositorio independiente, por crear)
-   Practicas-SA-B--202110363-gitops   (nombre sugerido, a confirmar
-                                        manualmente por el estudiante)
+GITOPS / MANIFEST REPOSITORY (repositorio independiente, ya creado)
+   practica8-gitops
+   https://github.com/emileon9/practica8-gitops
    - valores de imagen/tag por ambiente (dev/prod)
    - manifiesto(s) de Argo Rollouts (Rollout + AnalysisTemplate)
    - Application(s) de ArgoCD
@@ -120,18 +120,21 @@ de P5 (`P5/charts/sa-platform/charts/<servicio>/values.yaml`).
 Ninguno de estos pasos se puede automatizar desde este entorno (requieren
 una cuenta de GitHub autenticada interactivamente):
 
-1. Crear un repositorio nuevo, vacío, independiente del actual (por ejemplo
-   `Practicas-SA-B--202110363-gitops`).
-2. Clonarlo localmente y copiar dentro la estructura que se deje preparada
-   en `P8/argocd/` y `P8/helm-gitops-values/` (o el nombre que se defina en
-   Fase 3) una vez existan.
-3. Crear un Personal Access Token (o GitHub App) con permiso de escritura
-   **solo sobre ese repositorio GitOps**, y agregarlo como secret en el
-   repositorio de código (por ejemplo `GITOPS_REPO_TOKEN`) para que el
-   workflow de actualización de versión pueda abrir el Pull Request.
-4. Instalar ArgoCD en el clúster que se vaya a usar para la demo y crear ahí
-   la `Application` que apunte al repositorio GitOps recién creado.
+1. ✅ **Hecho**: repositorio GitOps creado —
+   https://github.com/emileon9/practica8-gitops. Los 8 manifiestos de
+   `P8/argocd/` ya referencian esta URL real (actualizado, sin commitear
+   todavía a petición del estudiante).
+2. ✅ **Hecho**: contenido de `P8/gitops-repo-template/` copiado y
+   pusheado como commit inicial (`chore: initial GitOps repo structure`,
+   verificado: las 7 carpetas de `apps/` están presentes en GitHub).
+3. ✅ **Hecho**: `GITOPS_REPO_TOKEN` (secret) y `GITOPS_REPO_OWNER` /
+   `GITOPS_REPO_NAME` (variables) confirmados en el repositorio de código
+   (`Practicas-SA-B--202110363`, no en `practica8-gitops`) —
+   `.github/workflows/gitops-update.yml` ya puede abrir el Pull Request en
+   cuanto se publique un tag `vX.Y.Z`.
+4. ⬜ Instalar ArgoCD en el clúster que se vaya a usar para la demo y
+   aplicar `P8/argocd/project/sa-platform-project.yaml` + las 8
+   `Application` de `P8/argocd/applications/`.
 
-No se inventa aquí ningún nombre definitivo de repositorio, token o URL:
-estos se completarán en el README principal (tabla de evidencias) una vez
-existan realmente.
+El nombre y la URL del repositorio ya no son un placeholder: son reales,
+confirmados por el estudiante.

@@ -37,16 +37,16 @@ prod.yaml`. Al hacer merge del PR, ArgoCD detecta el cambio y sincroniza.
 
 ## Pasos para activarlo (una sola vez, manual)
 
-1. Crear este repositorio en GitHub (vacío) y copiar aquí el contenido de
-   `P8/gitops-repo-template/` (esta carpeta) como commit inicial.
-2. En el repositorio de código, crear el secret `GITOPS_REPO_TOKEN` (token
-   con permiso de escritura solo sobre este repo) y las variables de
-   repositorio `GITOPS_REPO_OWNER` / `GITOPS_REPO_NAME`
-   (`Settings → Secrets and variables → Actions`).
-3. Actualizar `P8/argocd/applications/*.yaml` y
-   `P8/argocd/project/sa-platform-project.yaml` en el repo de código,
-   reemplazando `<GITOPS_REPO_OWNER>/<GITOPS_REPO_NAME>` por la URL real
-   de este repositorio.
-4. Instalar ArgoCD en el clúster de la demo y aplicar
+1. ✅ Repositorio creado y con contenido inicial:
+   https://github.com/emileon9/practica8-gitops.
+2. ✅ Secret `GITOPS_REPO_TOKEN` y variables `GITOPS_REPO_OWNER=emileon9` /
+   `GITOPS_REPO_NAME=practica8-gitops` confirmados en el repositorio de
+   código (no en este repo GitOps).
+3. ✅ `P8/argocd/applications/*.yaml` y
+   `P8/argocd/project/sa-platform-project.yaml` ya apuntan a
+   `https://github.com/emileon9/practica8-gitops.git`.
+4. ⬜ Instalar ArgoCD en el clúster de la demo y aplicar
    `P8/argocd/project/sa-platform-project.yaml` y las 8 Applications de
    `P8/argocd/applications/`.
+
+**Único paso pendiente: el 4.**

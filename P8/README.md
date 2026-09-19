@@ -54,12 +54,15 @@ seguridad de supply chain): **[docs/gitops-flow.md](docs/gitops-flow.md)**.
   (`P8/helm/*`), Terraform (`P8/terraform`), manifiestos de ArgoCD
   (`P8/argocd`), políticas de Kyverno (`P8/security/kyverno`), tests y
   pipelines. Nunca despliega directamente al clúster.
-- **Repositorio GitOps** (independiente, `PENDIENTE` de crear
-  manualmente): contiene únicamente el tag de imagen por servicio y
-  ambiente (`apps/<servicio>/values-{dev,prod}.yaml`). Plantilla exacta
-  lista para copiar: [P8/gitops-repo-template/](P8/gitops-repo-template/).
-  Pasos manuales exactos de activación:
-  [docs/GITOPS.md, sección 5](docs/GITOPS.md#5-qué-debe-crear-manualmente-el-estudiante-en-github).
+- **Repositorio GitOps**: https://github.com/emileon9/practica8-gitops —
+  creado, con el contenido inicial de
+  [P8/gitops-repo-template/](P8/gitops-repo-template/) ya pusheado
+  (`apps/<servicio>/values-{dev,prod}.yaml`, solo el tag de imagen por
+  servicio y ambiente). Los 8 manifiestos de `P8/argocd/` ya apuntan a
+  esta URL real, y el secret `GITOPS_REPO_TOKEN` + las variables
+  `GITOPS_REPO_OWNER`/`GITOPS_REPO_NAME` ya están configurados en este
+  repo de código (confirmado) — `gitops-update.yml` puede abrir el Pull
+  Request en cuanto se publique un tag `vX.Y.Z`.
 - **ArgoCD**: único componente que aplica cambios al clúster. 8
   `Application` (una por componente + una de plataforma) agrupadas en el
   `AppProject` `sa-platform` — ver [P8/argocd/](P8/argocd/). Cada
@@ -111,11 +114,23 @@ solape de responsabilidad entre Helm y Terraform):
   ArgoCD, **scoping su acceso únicamente al namespace `sa-p5`** (no
   cluster-admin)
 
-**Estado real:** el código es correcto y consistente con los valores ya
-usados en producción por P5/P6, pero `terraform validate`/`plan`/`apply`
-**no se han podido ejecutar todavía**: Terraform CLI no está instalado en
-esta máquina (verificado: `terraform` no está en el `PATH`). Pendiente de
-instalar y ejecutar antes de la demo.
+**Estado real (verificado con Terraform v1.16.2, instalado en esta
+sesión):**
+
+```
+$ terraform init      -> "Terraform has been successfully initialized!"
+$ terraform validate  -> "Success! The configuration is valid."
+$ terraform plan      -> "Plan: 5 to add, 0 to change, 0 to destroy."
+```
+
+El plan confirma exactamente los 5 recursos esperados (`Namespace`,
+`ResourceQuota`, `LimitRange`, `Role`, `RoleBinding`) con los valores
+correctos (`sa-p5`, límites `250m`/`256Mi`, requests `50m`/`64Mi`, reglas
+RBAC incluyendo `argoproj.io/rollouts`). `terraform apply` **no** se
+ejecutó: requiere un clúster real detrás del contexto `docker-desktop`
+(ninguno está corriendo ahora) y aplicar cambios de infraestructura sin un
+clúster de destino real no tiene sentido — queda pendiente de correr una
+vez el clúster esté encendido.
 
 ## 6. Argo Rollouts
 
@@ -206,7 +221,7 @@ pendientes de la demo real: **[docs/INCIDENT.md](docs/INCIDENT.md)**.
 | Ítem | Enlace o dato |
 |---|---|
 | Repositorio de código | https://github.com/emileon9/Practicas-SA-B--202110363 |
-| Repositorio GitOps | PENDIENTE — completar después de crearlo (ver docs/GITOPS.md sección 5) |
+| Repositorio GitOps | https://github.com/emileon9/practica8-gitops |
 | Aplicación en ArgoCD | `sa-platform-gateway` (+ 6 más + `sa-platform-platform`), namespace `argocd`, destino `sa-p5` — PENDIENTE de instalar ArgoCD y sincronizar por primera vez |
 | Ejecución exitosa del pipeline | PENDIENTE — completar con la URL del primer run real de `gitops-update.yml` |
 | Reversión automática | PENDIENTE — completar con la URL del run + `kubectl get rollout gateway -n sa-p5` tras el fallo inducido |
@@ -239,10 +254,10 @@ pendientes de la demo real: **[docs/INCIDENT.md](docs/INCIDENT.md)**.
 | `kubectl` | ✅ v1.32.2 |
 | `docker` | ✅ instalado |
 | `k6` | ✅ v2.2.0 |
-| `terraform` | ❌ no instalado |
+| `terraform` | ✅ v1.16.2 — `init`/`validate`/`plan` corridos con éxito contra `P8/terraform` (`plan`: 5 to add, 0 to change, 0 to destroy); `apply` pendiente de un clúster real |
 | `cosign`, `trivy`, `syft`, `argocd` CLI, `kubectl-argo-rollouts` | ❌ no instalados localmente (se usan dentro de GitHub Actions; instalar localmente solo si se quiere probar fuera del pipeline) |
 | Clúster de Kubernetes accesible | ❌ ninguno corriendo ahora (`docker-desktop` y `minikube` existen como contextos, pero ninguno responde) |
-| Repositorio GitOps independiente | ❌ no creado todavía |
+| Repositorio GitOps independiente | ✅ creado y activado: https://github.com/emileon9/practica8-gitops, con contenido inicial pusheado y `GITOPS_REPO_TOKEN`/`GITOPS_REPO_OWNER`/`GITOPS_REPO_NAME` ya configurados en el repo de código |
 
 ## 12. Diagnóstico del repositorio original y decisiones tomadas
 
@@ -277,7 +292,7 @@ componentes en el namespace `sa-p5`, con `postgresql`/`rabbitmq`
 | Imágenes etiquetadas también como `latest` | `gitops-update.yml` solo publica el tag semántico del Git tag que lo disparó |
 | `ResourceQuota`/`LimitRange`/namespace creados desde el chart de Helm | Movidos a Terraform (`P8/terraform`), con los mismos valores reales |
 | Chart umbrella único en vez de "un chart por microservicio" | Fragmentado en 7 charts independientes + 1 de plataforma (`P8/helm/*`) |
-| No existía repositorio GitOps independiente | Estructura y plantilla completas preparadas (`P8/gitops-repo-template/`), con los pasos manuales exactos documentados |
+| No existía repositorio GitOps independiente | **Creado**: https://github.com/emileon9/practica8-gitops, poblado desde `P8/gitops-repo-template/`; los 8 manifiestos de `P8/argocd/` ya referencian esta URL |
 
 ### Qué se reutilizó sin cambios
 

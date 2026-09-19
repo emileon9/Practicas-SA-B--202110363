@@ -1,0 +1,7 @@
+# Binarios de provider descargados por `terraform init` (grandes,
+# especificos de la plataforma). .terraform.lock.hcl SI se versiona
+# (recomendacion oficial de Terraform: fija las versiones de provider).
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
