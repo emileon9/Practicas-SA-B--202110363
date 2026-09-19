@@ -229,7 +229,7 @@ pendientes de la demo real: **[docs/INCIDENT.md](docs/INCIDENT.md)**.
 | Despliegue rechazado por política | https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P8/security/evidencia/kyverno-rechazo.txt — salida real de las tres políticas rechazando en admission (`latest`, root, sin límites) |
 | Bloqueo por vulnerabilidad crítica | https://github.com/emileon9/Practicas-SA-B--202110363/actions/runs/35429661801 — Trivy detuvo el release por `CVE-2026-59873` (CRITICAL) antes de publicar o firmar; corregido en el commit `435d501` |
 | Imagen firmada | `ghcr.io/emileon9/sa-platform/gateway:v1.0.0` — firma verificada con `cosign verify`; certificado emitido a `.../gitops-update.yml@refs/tags/v1.0.0` por `https://token.actions.githubusercontent.com` |
-| Reporte de prueba de carga | https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P5/scripts/load-test/results/summary.json — 9356 peticiones, p95 100.67 ms, 0.00% de error; ambos umbrales (`rate<0.05`, `p(95)<1500`) en `ok: true` |
+| Reporte de prueba de carga | `P8/tests/load/results/summary.json` → https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P8/tests/load/results/summary.json — 9356 peticiones, p95 100.67 ms, 0.00% de error; ambos umbrales (`rate<0.05`, `p(95)<1500`) en `ok: true` |
 | Video demostrativo | PENDIENTE — completar con la URL y el minutaje de la sección siguiente |
 
 ## Video demostrativo
