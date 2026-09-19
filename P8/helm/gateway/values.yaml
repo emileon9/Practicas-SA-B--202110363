@@ -47,7 +47,7 @@ extraEnv:
   # solo el release de demostracion de la version defectuosa lo sobrescribe
   # (ver P8/docs/INCIDENT.md).
   - name: FAULT_INJECT_RATE
-    value: "0"
+    value: "0.5"
 
 runAsUser: 1000
 runAsGroup: 1000
