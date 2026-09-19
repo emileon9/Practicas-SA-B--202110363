@@ -1,0 +1,14 @@
+Verificacion de firma de imagen con Cosign (keyless / Sigstore)
+Fecha: 2026-09-19 18:43:54 UTC
+
+$ cosign verify \
+    --certificate-identity-regexp 'https://github.com/emileon9/Practicas-SA-B--202110363/.*' \
+    --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+    ghcr.io/emileon9/sa-platform/gateway:v1.0.0
+
+
+Verification for ghcr.io/emileon9/sa-platform/gateway:v1.0.0 --
+The following checks were performed on each of these signatures:
+  - The cosign claims were validated
+  - Existence of the claims in the transparency log was verified offline
+  - The code-signing certificate was verified using trusted certificate authority certificates
