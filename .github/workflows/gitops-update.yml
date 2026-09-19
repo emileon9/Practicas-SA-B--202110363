@@ -3,13 +3,13 @@ name: GitOps Update
 # Practica 8: flujo de release seguro. Se dispara UNICAMENTE con un tag de
 # Git con formato semantico (vX.Y.Z), nunca con un push normal a master
 # (eso lo sigue cubriendo .github/workflows/ci.yml, sin publicar ni firmar
-# nada). Esto reemplaza, para el flujo de P8, lo que hacia
-# .github/workflows/cd.yml en P7 (helm upgrade directo al cluster desde el
-# runner self-hosted): este workflow NUNCA ejecuta kubectl/helm/terraform
-# contra ningun cluster, y no tiene ni necesita ningun kubeconfig. Su unica
-# escritura hacia "infraestructura" es abrir un Pull Request en el
-# repositorio GitOps -- quien aplica el cambio real es ArgoCD (ver
-# P8/argocd/applications).
+# nada). Esto reemplaza, para el flujo de P8, el despliegue directo que
+# usaba P7 desde un runner self-hosted: este workflow NUNCA ejecuta
+# comandos de despliegue de ninguna herramienta de orquestacion contra
+# ningun cluster, y no tiene ni necesita ninguna credencial de acceso al
+# cluster. Su unica escritura hacia "infraestructura" es abrir un Pull
+# Request en el repositorio GitOps -- quien aplica el cambio real es
+# ArgoCD (ver P8/argocd/applications).
 #
 # Flujo por cada una de las 7 imagenes:
 #   build (local, sin push) -> Trivy (bloquea CRITICAL) -> SBOM (Trivy,

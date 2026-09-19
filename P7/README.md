@@ -74,7 +74,15 @@ propio workflow.
 | `docker-validate` (matrix: las 7 imágenes) | `docker build` de cada Dockerfile real, **sin publicar** — valida que el Dockerfile sigue funcionando |
 | `docker-build-push` (matrix: las 7 imágenes; **solo si `push` a `master`**) | Login en GHCR con `GITHUB_TOKEN` → build + push con tag `<sha>` y `latest` |
 
-### CD — [.github/workflows/cd.yml](../.github/workflows/cd.yml)
+### CD — [legacy/cd.yml.txt](legacy/cd.yml.txt)
+
+> **Nota (Práctica 8):** este archivo describe el workflow tal como
+> corría durante P7. Para la entrega de P8 se movió fuera de
+> `.github/workflows/` (y se renombró a `.txt`) porque esa práctica
+> prohíbe explícitamente que un workflow con despliegue directo exista en
+> esa carpeta. El comportamiento descrito abajo sigue siendo el real de
+> P7; ver [P8/docs/GITOPS.md](../P8/docs/GITOPS.md) para el flujo que lo
+> reemplaza.
 
 Se dispara con `workflow_run` cuando `CI` termina en éxito sobre `master`
 (es decir, después de que las imágenes ya están en GHCR). Corre en un
@@ -376,8 +384,10 @@ P7/
     └── evidencias.md          Checklist de capturas para la entrega
 
 .github/workflows/
-├── ci.yml                     build + test + docker build/push
-└── cd.yml                     helm upgrade + verificacion de rollout
+└── ci.yml                     build + test + docker build/push
+
+P7/legacy/
+└── cd.yml.txt                 CD original de P7 (movido aqui para P8, ver nota arriba)
 ```
 
 Los tests nuevos viven junto al código que prueban (convención estándar de
