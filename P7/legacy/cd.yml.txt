@@ -1,3 +1,10 @@
+# ARCHIVO HISTORICO -- NO es un workflow activo. Se movio fuera de
+# .github/workflows/ (y se le cambio la extension a .txt) a proposito: es
+# el workflow de despliegue directo de P7, que la Practica 8 prohibe
+# explicitamente que exista dentro de .github/workflows del repositorio.
+# Se conserva aqui solo como referencia historica de lo que hacia P7 antes
+# de migrar a GitOps (ver P8/docs/GITOPS.md).
+
 name: CD (legacy P7 - deshabilitado por defecto)
 
 # Practica 7 (Software Avanzado, USAC): Despliegue Continuo del chart de
