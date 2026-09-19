@@ -32,6 +32,46 @@ env:
   IMAGE_NAMESPACE: sa-platform
 
 jobs:
+  # Practica 8: Trivy tambien corre aqui, no solo en el flujo de release,
+  # para que una vulnerabilidad CRITICAL bloquee el Pull Request antes de
+  # que llegue a master. exit-code 1 es lo que convierte el hallazgo en un
+  # check fallido y deja el PR sin poder mezclarse.
+  trivy-pr:
+    name: Trivy (bloquea el PR ante CRITICAL) - ${{ matrix.image.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: gateway, context: P5/services/gateway }
+          - { name: ms-users, context: P5/services/ms-users }
+          - { name: ms-products, context: P5/services/ms-products }
+          - { name: ms-orders, context: P5/services/ms-orders }
+          - { name: ms-notifications, context: P5/services/ms-notifications }
+          - { name: cronjob-heartbeat, context: P5/jobs/cronjob-heartbeat }
+          - { name: cronjob-summary, context: P5/jobs/cronjob-summary }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build local (sin publicar)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          push: false
+          load: true
+          tags: sa-platform/${{ matrix.image.name }}:pr-scan
+
+      - name: Trivy - escaneo de vulnerabilidades
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: sa-platform/${{ matrix.image.name }}:pr-scan
+          format: table
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
   helm-lint:
     name: Helm lint - ${{ matrix.chart }}
     runs-on: ubuntu-latest
