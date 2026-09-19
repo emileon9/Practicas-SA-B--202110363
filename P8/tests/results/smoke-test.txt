@@ -1,0 +1,11 @@
+=== Smoke tests: sa-platform (http://localhost) ===
+OK   GET /health -> 200
+OK   GET /api/users/health -> 200
+OK   GET /api/products/health -> 200
+OK   GET /api/orders/health -> 200
+OK   GET /api/notifications/health -> 200
+OK   GET /api/orders/orders -> 200
+OK   GET /api/notifications/notifications -> 200
+OK   POST /api/users/graphql -> 200
+OK   POST /api/products/graphql -> 200
+=== 0 fallo(s) ===

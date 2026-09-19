@@ -36,29 +36,43 @@ echo "=== Integration test 2: API -> PostgreSQL -> RabbitMQ -> ms-notifications 
 #   -> ms-notifications consume la cola durable y lo expone via GET /notifications
 # Se dispara manualmente cada CronJob (sin esperar su propio schedule) y se
 # consulta el endpoint hasta ver aparecer un nuevo resumen, o timeout.
-echo "Disparando cronjob-heartbeat manualmente..."
-kubectl create job --from=cronjob/cronjob-heartbeat -n "$NAMESPACE" \
-  "heartbeat-integration-test-$(date +%s)" >/dev/null
+# Cada CronJob se dispara a mano y se EXIGE que termine en exito. Una
+# version anterior de esta prueba solo comprobaba que /notifications
+# devolviera un arreglo JSON, cosa que ocurre incluso con los datos de
+# ejemplo en memoria: pasaba siempre, aun con PostgreSQL caido o con las
+# credenciales mal. Comprobar el estado de los Jobs es lo que realmente
+# ejercita la cadena.
+HB="heartbeat-integration-test-$(date +%s)"
+SM="summary-integration-test-$(date +%s)"
 
-echo "Disparando cronjob-summary manualmente..."
-kubectl create job --from=cronjob/cronjob-summary -n "$NAMESPACE" \
-  "summary-integration-test-$(date +%s)" >/dev/null
+echo "Disparando cronjob-heartbeat (escribe en PostgreSQL)..."
+kubectl create job --from=cronjob/cronjob-heartbeat -n "$NAMESPACE" "$HB" >/dev/null
 
-echo "Esperando propagacion (hasta 30s)..."
-OK=false
-for _ in $(seq 1 6); do
-  sleep 5
-  RESP=$(curl -s -H "Host: ${HOST_HEADER}" "${BASE_URL}/api/notifications/notifications")
-  if echo "$RESP" | grep -q '\[' ; then
-    OK=true
-    break
-  fi
-done
-
-if [ "$OK" = true ]; then
-  echo "OK   ms-notifications expone datos tras el ciclo DB->broker->consumidor: $RESP"
+if kubectl wait --for=condition=complete "job/$HB" -n "$NAMESPACE" --timeout=90s >/dev/null 2>&1; then
+  echo "OK   cronjob-heartbeat escribio en PostgreSQL"
 else
-  echo "FAIL no se observo el resumen esperado en /api/notifications/notifications"
+  echo "FAIL cronjob-heartbeat no completo (DB inaccesible o credenciales incorrectas):"
+  kubectl logs -n "$NAMESPACE" "job/$HB" --tail=3 2>&1 | sed 's/^/       /'
+  FAILURES=$((FAILURES + 1))
+fi
+
+echo "Disparando cronjob-summary (lee PostgreSQL y publica en RabbitMQ)..."
+kubectl create job --from=cronjob/cronjob-summary -n "$NAMESPACE" "$SM" >/dev/null
+
+if kubectl wait --for=condition=complete "job/$SM" -n "$NAMESPACE" --timeout=90s >/dev/null 2>&1; then
+  echo "OK   cronjob-summary publico el resumen en el broker"
+else
+  echo "FAIL cronjob-summary no completo (DB o broker inaccesibles):"
+  kubectl logs -n "$NAMESPACE" "job/$SM" --tail=3 2>&1 | sed 's/^/       /'
+  FAILURES=$((FAILURES + 1))
+fi
+
+echo "Consultando el consumidor..."
+RESP=$(curl -s -H "Host: ${HOST_HEADER}" "${BASE_URL}/api/notifications/notifications")
+if echo "$RESP" | grep -q '\['; then
+  echo "OK   ms-notifications responde: $RESP"
+else
+  echo "FAIL respuesta inesperada de ms-notifications: $RESP"
   FAILURES=$((FAILURES + 1))
 fi
 
