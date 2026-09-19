@@ -25,9 +25,14 @@ spec:
   revisionHistoryLimit: 3
   strategy:
     canary:
-      # Al menos 3 pasos de promocion, cada uno condicionado por el mismo
-      # AnalysisTemplate (disponibilidad + tasa de error + latencia de
+      # Tres pasos de promocion (10% -> 30% -> 60%), cada uno seguido del
+      # mismo AnalysisTemplate (disponibilidad + tasa de error + latencia de
       # /health). Ningun paso promueve sin que el analisis pase.
+      #
+      # No hay un "setWeight: 100" final a proposito: al terminar el ultimo
+      # paso, Argo Rollouts promueve al 100% y escala a cero la version
+      # anterior por si mismo. Dejarlo explicito seria redundante y ademas
+      # haria que el ultimo paso NO fuera una compuerta de analisis.
       steps:
         - setWeight: 10
         - analysis:
@@ -41,7 +46,6 @@ spec:
         - analysis:
             templates:
               - templateName: gateway-canary-analysis
-        - setWeight: 100
   selector:
     matchLabels:
       app: gateway
