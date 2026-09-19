@@ -1,80 +1,111 @@
 # Informe de incidente — fallo inducido en el canary de `gateway`
 
-> Plantilla lista para completarse con datos reales de la demostración.
-> Los mecanismos descritos abajo (qué se rompe, qué lo detecta, cómo se
-> revierte) ya están implementados y son reales; los números marcados
-> `PENDIENTE` se llenan al ejecutar la demo contra un clúster real — no se
-> inventan aquí.
+**Fecha:** 2026-09-19 · **Clúster:** `docker-desktop` · **Namespace:** `sa-p5`
+**Versión estable:** `v1.0.0` · **Versión defectuosa:** `v1.1.0`
+
+Todos los datos de este informe provienen de una ejecución real. Los
+comandos que los produjeron están citados en cada sección.
 
 ## Qué falló
 
-Se publicó deliberadamente una versión defectuosa de `gateway`
-(`vX.Y.Z-fault`, PENDIENTE del tag real usado en la demo) con la variable
-de entorno `FAULT_INJECT_RATE` elevada (por ejemplo a `0.5`) en el overlay
-`values-prod.yaml` del repositorio GitOps para ese release. Con
-`FAULT_INJECT_RATE > 0`, el endpoint `GET /health` de gateway
-(`P5/services/gateway/src/app.ts`) responde `HTTP 500` con esa
-probabilidad en cada llamada, en vez de `200 {"status":"ok",...}`. Es el
-único cambio de código entre la versión estable y la defectuosa: ningún
-otro comportamiento de la plataforma se modifica.
+Se publicó deliberadamente `v1.1.0` de `gateway` con el defecto activado:
+la variable de entorno `FAULT_INJECT_RATE` pasó de `0` a `0.5`, lo que hace
+que el endpoint `GET /health` responda `HTTP 500` en aproximadamente la
+mitad de las peticiones
+(ver [P5/services/gateway/src/app.ts](../../P5/services/gateway/src/app.ts)).
+Es el único cambio entre la versión estable y la defectuosa: ningún otro
+comportamiento de la plataforma se modificó.
+
+La versión defectuosa se publicó por el mismo camino que cualquier otra:
+tag de Git `v1.1.0` → pipeline (`gitops-update.yml`) → ArgoCD → Argo
+Rollouts. No se aplicó nada a mano contra el clúster.
 
 ## Cómo se detectó
 
-El `AnalysisTemplate` `gateway-canary-analysis`
-(`P8/helm/gateway/templates/analysistemplate.yaml`), ejecutado
-automáticamente por Argo Rollouts en el primer paso del canary (10% de
-tráfico hacia la versión nueva), realiza 20 peticiones a `/health` y
-calcula la tasa de error. El umbral configurado es
-`canary.analysis.maxErrorRatePercent: 10` (ver
-`P8/helm/gateway/values.yaml`). Con `FAULT_INJECT_RATE=0.5`, la tasa de
-error observada (≈50%, moderada por el hecho de que el Service también
-enruta tráfico hacia los pods estables sin el defecto) supera ese 10%, y
-el Job del `AnalysisTemplate` termina con `exit 1`.
+El `AnalysisTemplate` `gateway-canary-analysis`, que Argo Rollouts ejecuta
+en la primera compuerta del canary (10% del tráfico), lanzó un Job que hizo
+20 peticiones reales a `/health` y midió la tasa de error.
 
-- Métrica: tasa de error de `/health` sobre el Service de `gateway`.
-- Threshold configurado: `10%`.
-- Valor observado en la demo: `PENDIENTE` (capturar del log del Job de
-  `AnalysisRun`, `kubectl logs -n sa-p5 job/<analysisrun-job>`).
+Salida literal del Job (`kubectl logs -n sa-p5 -l job-name=...health-check.1`):
+
+```
+url=http://gateway.sa-p5.svc.cluster.local:4000/health requests=20 errors=4 error_rate=20% max_allowed=10% max_latency_s=1
+FAIL: tasa de error 20% supera el umbral 10%
+```
+
+- **Validación:** `AnalysisRun gateway-68766c6b6f-3-1`, métrica `health-check`
+- **Métrica:** tasa de error sobre `GET /health`
+- **Threshold configurado:** 10% (`canary.analysis.maxErrorRatePercent`)
+- **Valor observado:** **20%** (4 errores de 20 peticiones)
+
+Sobre por qué se midió 20% y no ~50%: el canary es "básico", sin service
+mesh, así que el Service reparte tráfico entre los pods estables y el
+canary en proporción a sus réplicas. Solo una fracción de las peticiones
+llegó al pod defectuoso, y de esas falló la mitad. Es exactamente la
+limitación documentada en [GITOPS.md](GITOPS.md) — y esta medición la
+confirma empíricamente. El umbral de 10% es lo bastante estricto para
+detectar el defecto aun diluido de esa forma.
 
 ## Cómo se contuvo
 
-Argo Rollouts marca el `AnalysisRun` como `Failed` y, por configuración
-por defecto de un `Rollout` con `strategy.canary` (sin
-`spec.strategy.canary.analysis.templates` marcado como no-abortante), **el
-Rollout aborta automáticamente y revierte el peso de tráfico al 100% de la
-versión estable** — sin ejecutar `kubectl argo rollouts undo` ni ninguna
-otra acción manual. El ReplicaSet de la versión defectuosa se escala a 0.
+Argo Rollouts marcó el `AnalysisRun` como `Failed` y abortó el rollout por
+sí solo. Mensaje literal del Rollout:
 
-- Mecanismo de rollback: automático, disparado por `AnalysisRun` fallido
-  en el primer step del canary (ver `P8/helm/gateway/templates/rollout.yaml`).
-- Versión afectada: `PENDIENTE` (el tag defectuoso real usado en la demo).
-- Porcentaje de tráfico afectado: máximo `10%` (el canary nunca superó el
-  primer step, `setWeight: 10`).
+```
+RolloutAborted: Rollout aborted update to revision 3: Step-based analysis
+phase error/failed: Metric "health-check" assessed Failed due to failed (1)
+> failureLimit (0)
+```
+
+- **Mecanismo de rollback:** automático, sin intervención humana. No se
+  ejecutó ningún `undo`, `promote` ni comando manual.
+- **Versión afectada:** `v1.1.0` (revisión 3 del Rollout).
+- **Porcentaje de tráfico afectado:** máximo **10%** — el canary nunca
+  pasó del primer paso (`setWeight: 10`). El rollout quedó en `Step 0/7`,
+  `ActualWeight: 0`, y el ReplicaSet defectuoso se escaló a 0.
+- **Estado final:** `ghcr.io/emileon9/sa-platform/gateway:v1.0.0 (stable)`,
+  2/2 réplicas disponibles durante todo el incidente.
 
 ## Tiempo de recuperación
 
-`PENDIENTE` — medir, en la demo real, los minutos entre el momento en que
-el `Rollout` inicia el canary de la versión defectuosa
-(`kubectl get rollout gateway -n sa-p5 -w`, timestamp del evento
-`RolloutStepCompleted`/inicio del primer `setWeight`) y el momento en que
-`kubectl get rollout gateway -n sa-p5` vuelve a reportar
-`Status: Healthy` con el 100% del tráfico en la versión estable. Dado que
-el `AnalysisTemplate` corre 20 peticiones secuenciales con un timeout de
-1s cada una (peor caso ~20s) más el tiempo de arranque del Job
-(`activeDeadlineSeconds: 120`), el límite superior teórico de detección es
-de unos 2-3 minutos; el número real debe capturarse de la demo, no
-asumirse.
+| Momento | Hora (UTC) |
+|---|---|
+| Publicación de la versión defectuosa (push del tag `v1.1.0`) | 07:56:17 |
+| Inicio del análisis en la primera compuerta | 07:56:54 |
+| Análisis fallido / rollout abortado | 07:57:07 |
+| Retorno confirmado al estado estable | 07:57:12 |
+
+**Tiempo total de recuperación: 55 segundos** (13 de ellos fueron el
+análisis en sí). En ningún momento el servicio dejó de atender: las dos
+réplicas estables siguieron disponibles mientras el canary se evaluaba y
+se retiraba.
 
 ## Cómo prevenirlo
 
-Un control adicional que habría evitado que esta versión llegara siquiera
-al canary: ejecutar el **smoke test** (`P8/tests/smoke/smoke-test.sh`)
-como parte de `gitops-update.yml`, contra un entorno de staging efímero,
-**antes** de abrir el Pull Request al repositorio GitOps — actualmente el
-pipeline solo corre tests unitarios, `helm lint`, Trivy y la firma, pero
-no un smoke test end-to-end del propio release candidato. Con
-`FAULT_INJECT_RATE` fijado explícitamente en cada overlay de ambiente (no
-solo en el `values.yaml` base), un smoke test con ~20 peticiones a
-`/health` ya habría detectado una tasa de error del 50% y bloqueado el
-release antes de que el Pull Request se abriera, en vez de dejar que el
-canary en producción fuera la primera línea de defensa.
+El control que habría evitado que esta versión llegara al canary es
+ejecutar el **smoke test** ([../tests/smoke/smoke-test.sh](../tests/smoke/smoke-test.sh))
+contra un entorno de staging dentro de `gitops-update.yml`, **antes** de
+abrir el Pull Request al repositorio GitOps. Hoy el pipeline corre pruebas
+unitarias, `helm lint`, Trivy y la firma, pero ninguna prueba end-to-end
+del release candidato: con 20 peticiones a `/health` habría detectado el
+50% de error y bloqueado el release, en vez de dejar que el canary en
+producción fuera la primera línea de defensa.
+
+Un segundo control, más barato: validar en el pipeline que
+`FAULT_INJECT_RATE` sea `0` en los values de cualquier ambiente que no sea
+de pruebas. El defecto de este incidente era precisamente una variable de
+configuración que nunca debió llegar a producción con ese valor.
+
+## Nota sobre un segundo rollback observado
+
+Antes de este incidente hubo un rollback distinto, causado por un error de
+infraestructura y no por una métrica: el Job del `AnalysisTemplate` no
+declaraba `runAsNonRoot` ni límites de recursos, así que las políticas de
+Kyverno (`disallow-root-user`, `require-resource-limits`) lo rechazaron en
+admission, el `AnalysisRun` acumuló errores y el rollout se abortó
+(`AnalysisRun gateway-5cf54f64f-2-1`, estado `Error`).
+
+Se deja registrado porque es un resultado legítimo del sistema: las
+políticas de admisión se aplican a **todos** los Pods del namespace,
+incluidos los que crea la propia maquinaria de entrega. El Job se corrigió
+para cumplirlas; las políticas no se relajaron.
