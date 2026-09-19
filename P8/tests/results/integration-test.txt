@@ -1,0 +1,12 @@
+=== Integration test 1: Gateway -> ms-users (proxy real, no un mock) ===
+OK   gateway reenvio correctamente a ms-users: {"data":{"users":[{"__typename":"User"},{"__typename":"User"},{"__typename":"User"}]}}
+
+=== Integration test 2: API -> PostgreSQL -> RabbitMQ -> ms-notifications ===
+Disparando cronjob-heartbeat (escribe en PostgreSQL)...
+OK   cronjob-heartbeat escribio en PostgreSQL
+Disparando cronjob-summary (lee PostgreSQL y publica en RabbitMQ)...
+OK   cronjob-summary publico el resumen en el broker
+Consultando el consumidor...
+OK   ms-notifications responde: [{"id":1,"userId":1,"message":"Tu pedido #1 esta pendiente de confirmacion","read":false},{"id":2,"userId":2,"message":"Tu pedido #2 fue enviado","read":false},{"id":3,"userId":3,"message":"Tu pedido #3 fue entregado","read":true}]
+
+=== 0 fallo(s) ===
