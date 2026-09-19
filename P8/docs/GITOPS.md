@@ -1,9 +1,8 @@
 # Arquitectura GitOps objetivo — Práctica 8
 
-Este documento describe el flujo objetivo (a implementar en las Fases 2-5) y
-el rol exacto de cada componente. No documenta nada que ya esté corriendo
-hoy: hoy únicamente existe el pipeline de P7 descrito en
-[../README.md](../README.md).
+Este documento describe el flujo y el rol exacto de cada componente. Todo lo
+que aquí se describe está implementado y fue ejecutado contra un clúster
+real: ver la tabla de evidencias en [../README.md](../README.md).
 
 ## 1. Dos repositorios, dos responsabilidades
 
@@ -26,9 +25,8 @@ GITOPS / MANIFEST REPOSITORY (repositorio independiente, ya creado)
    - única fuente de verdad de "qué versión corre en qué ambiente"
 ```
 
-El repositorio GitOps **no se puede crear de forma remota desde aquí**
-(requiere una acción manual del estudiante en GitHub). Ver la sección 5 para
-la lista exacta de pasos manuales.
+Ambos repositorios existen y son públicos. La sección 5 documenta los pasos
+manuales que hubo que hacer en GitHub para activar el flujo.
 
 ## 2. Flujo de actualización de versión
 
@@ -107,34 +105,11 @@ prod) y `helm template` sobre los 7, sin errores.
 |---|---|---|
 | `ResourceQuota` / `LimitRange` / `Namespace` | Templates del chart padre | **Terraform** (`P8/terraform`), con los mismos valores reales que ya usaba P5 — ver sección 4 de ese README |
 | `ConfigMap sa-platform-config` (LOG_LEVEL, TZ, DB/BROKER host, etc.) | Template del chart padre | **Resuelto**: nuevo chart `P8/helm/platform` (ConfigMap + NetworkPolicy + SealedSecrets), con su propia Application de ArgoCD (`sa-platform-platform`, sync-wave `-1` para aplicarse antes que los 7 servicios) |
-| `Secret` de PostgreSQL/RabbitMQ | Template del chart padre, generado desde `values-secrets.yaml` en texto plano local | **Resuelto con Sealed Secrets** (`P8/helm/platform/templates/sealedsecrets.yaml`): el ciphertext SI puede vivir en el repo GitOps; solo el controller de Sealed Secrets en el clúster puede descifrarlo. Los valores `encryptedData` de este repo son placeholders explícitos — deben regenerarse con `kubeseal` contra el clúster real (comando exacto en `P8/docs/SECURITY.md`) |
+| `Secret` de PostgreSQL/RabbitMQ | Template del chart padre, generado desde `values-secrets.yaml` en texto plano local | **Resuelto con Sealed Secrets**, y viven en el repositorio GitOps (`practica8-gitops/secrets/`), no en el chart: un SealedSecret es estado desplegado, no forma de la aplicación. El `encryptedData` es real, generado con `kubeseal` contra el controller de este clúster; la Application `sa-platform-secrets` lo sincroniza en sync-wave `-2`. Ver `P8/docs/SECURITY.md` |
 | `Ingress` | Template del chart padre, apuntando al Service de `gateway` | Movido dentro del propio chart `gateway` (`P8/helm/gateway/templates/ingress.yaml`) |
-| `NetworkPolicy` | Template del chart padre | Pendiente: se recreará como manifiesto de plataforma en Fase 3, igual que el ConfigMap |
+| `NetworkPolicy` | Template del chart padre | **Resuelto**: forma parte del chart `P8/helm/platform`, junto al ConfigMap |
 
 Ningún nombre de servicio, puerto, usuario (`runAsUser`/`runAsGroup`) ni
 valor de recursos fue inventado: son los mismos que ya usaban los subcharts
 de P5 (`P5/charts/sa-platform/charts/<servicio>/values.yaml`).
 
-## 5. Qué debe crear manualmente el estudiante en GitHub
-
-Ninguno de estos pasos se puede automatizar desde este entorno (requieren
-una cuenta de GitHub autenticada interactivamente):
-
-1. ✅ **Hecho**: repositorio GitOps creado —
-   https://github.com/emileon9/practica8-gitops. Los 8 manifiestos de
-   `P8/argocd/` ya referencian esta URL real (actualizado, sin commitear
-   todavía a petición del estudiante).
-2. ✅ **Hecho**: contenido de `P8/gitops-repo-template/` copiado y
-   pusheado como commit inicial (`chore: initial GitOps repo structure`,
-   verificado: las 7 carpetas de `apps/` están presentes en GitHub).
-3. ✅ **Hecho**: `GITOPS_REPO_TOKEN` (secret) y `GITOPS_REPO_OWNER` /
-   `GITOPS_REPO_NAME` (variables) confirmados en el repositorio de código
-   (`Practicas-SA-B--202110363`, no en `practica8-gitops`) —
-   `.github/workflows/gitops-update.yml` ya puede abrir el Pull Request en
-   cuanto se publique un tag `vX.Y.Z`.
-4. ⬜ Instalar ArgoCD en el clúster que se vaya a usar para la demo y
-   aplicar `P8/argocd/project/sa-platform-project.yaml` + las 8
-   `Application` de `P8/argocd/applications/`.
-
-El nombre y la URL del repositorio ya no son un placeholder: son reales,
-confirmados por el estudiante.
