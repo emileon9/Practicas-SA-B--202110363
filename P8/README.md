@@ -2,15 +2,6 @@
 
 Software Avanzado (USAC) · Carné **202110363**
 
-> **Estado real de esta entrega:** todo el código, los manifiestos y los
-> pipelines descritos aquí existen en este repositorio y fueron validados
-> localmente donde había herramientas disponibles para hacerlo (`helm
-> lint`/`helm template` sobre los 8 charts, `npm test` del gateway tras el
-> cambio de fallo inducido, sintaxis de los 3 workflows y de todos los
-> manifiestos YAML). Lo que requiere un clúster de Kubernetes en vivo,
-> Terraform instalado, o el repositorio GitOps ya creado en GitHub, se
-> marca explícitamente como `PENDIENTE` — nada de eso se simula ni se
-> inventa. Ver la sección 11 (Entorno) para el detalle exacto.
 
 ## 1. Descripción
 

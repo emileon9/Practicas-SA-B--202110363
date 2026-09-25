@@ -1,0 +1,127 @@
+================================================================
+ VERIFICACION PRACTICA 8 - v2.0
+ Carnet: 202110363        Fecha: 2026-09-19 21:19
+ Hash del script: b7d118f15b7d9b1c
+================================================================
+
+--- 0. Herramientas y contexto (debe verificarlo el auxiliar)
+  [0;32m[OK][0m    Todas las herramientas presentes
+  Contexto de kubectl : docker-desktop
+  Servidor            : Kubernetes control plane is running at https://kubernetes.docker.internal:6443
+  Usuario de ArgoCD   : sin sesion
+  [0;32m[OK][0m    Acceso al cluster confirmado
+
+--- 1. Repositorios
+  [0;32m[OK][0m    Repositorio de codigo accesible
+  [0;32m[OK][0m    Repositorio GitOps accesible
+  [0;32m[OK][0m    Carpeta /P8 presente
+  [0;32m[OK][0m    README de entrega presente
+
+--- ELIMINATORIO: ausencia de despliegue directo (seccion 8.1)
+  [0;32m[OK][0m    Ningun workflow despliega directamente ni almacena kubeconfig
+
+--- 2.1 Infraestructura como codigo con Terraform (8 pts)
+  [0;32m[OK][0m    Codigo Terraform encontrado en 1 directorio(s)
+  [0;32m[OK][0m    terraform validate correcto
+  [0;32m[OK][0m    Declara namespaces, cuotas o limites
+  [0;32m[OK][0m    Declara RBAC
+  >> 2.1 = 8 / 8
+
+--- 2.2 Empaquetado con Helm (8 pts)
+  [0;32m[OK][0m    14 chart(s): 9 raiz/raices y 5 subchart(s)
+  [0;32m[OK][0m    Multiples servicios empaquetados
+  [0;32m[OK][0m    helm lint correcto en los charts raiz
+  [0;32m[OK][0m    Valores diferenciados por ambiente (47 archivos)
+  [0;32m[OK][0m    helm lint integrado en el pipeline
+  >> 2.2 = 8 / 8
+
+--- 2.3 GitOps con ArgoCD (14 pts)
+  [0;33m[AVISO][0m Sin sesion de argocd: se consulto el CRD Application directamente
+  sync=Synced  health=Healthy  automated=si
+  repoURL=https://github.com/emileon9/practica8-gitops.git
+  [0;32m[OK][0m    Aplicacion sincronizada
+  [0;32m[OK][0m    Aplicacion saludable
+  [0;32m[OK][0m    Apunta al repositorio GitOps declarado
+  [0;32m[OK][0m    El pipeline genera un Pull Request al repositorio GitOps
+  >> 2.3 = 14 / 14
+
+--- 2.4 Entrega progresiva y reversion automatica (14 pts)
+  [0;32m[OK][0m    Rollout encontrado: gateway
+  Estrategia: canary   pasos declarados: 6
+  [0;32m[OK][0m    Tres o mas pasos de promocion
+  [0;32m[OK][0m    AnalysisTemplate definido (1)
+  [0;32m[OK][0m    La promocion esta condicionada al analisis
+  [0;32m[OK][0m    Evidencia de reversion: 2 AnalysisRun fallido(s), abort=false
+
+Name:            gateway
+Namespace:       sa-p5
+Status:          [32m✔[0m Healthy
+Strategy:        Canary
+  Step:          6/6
+  SetWeight:     100
+  ActualWeight:  100
+Images:          ghcr.io/emileon9/sa-platform/gateway:v1.0.0 ([32mstable[0m)
+Replicas:
+  Desired:       2
+  Current:       2
+  Updated:       2
+  Ready:         2
+  Available:     2
+
+NAME                                                            KIND         STATUS        AGE  INFO
+⟳ gateway                                                       Rollout      [32m✔[0m Healthy     20h  
+├──# revision:4                                                                                 
+│  └──⧉ [32mgateway-5cf54f64f[0m                                       ReplicaSet   [32m✔[0m Healthy     19h  [32mstable[0m
+│     ├──□ gateway-5cf54f64f-zwmb7                              Pod          [32m✔[0m Running     19h  ready:1/1,restarts:1
+│     └──□ gateway-5cf54f64f-6smlm                              Pod          [32m✔[0m Running     19h  ready:1/1,restarts:1
+├──# revision:3                                                                                 
+│  ├──⧉ gateway-68766c6b6f                                      ReplicaSet   [0m•[0m ScaledDown  19h  
+│  └──α [0mgateway-68766c6b6f-3-1[0m                                  AnalysisRun  [31m✖[0m Failed      19h  [31m✖[0m 1
+│     └──⊞ [0m3970ea13-1cde-42ce-a08d-0b3406990c81.health-check.1[0m  Job          [31m✖[0m Failed      19h  
+├──# revision:2                                                                                 
+│  ├──α [0mgateway-5cf54f64f-2-1[0m                                   AnalysisRun  [31m⚠[0m Error       19h  [31m⚠[0m 5
+│  ├──α [0mgateway-5cf54f64f-2-1.1[0m                                 AnalysisRun  [32m✔[0m Successful  19h  [32m✔[0m 1
+│  │  └──⊞ [0m3adb2602-19a8-4a32-81a7-049717bbbad1.health-check.1[0m  Job          [32m✔[0m Successful  19h  
+│  ├──α [0mgateway-5cf54f64f-2-3[0m                                   AnalysisRun  [32m✔[0m Successful  19h  [32m✔[0m 1
+  >> 2.4 = 14 / 14
+
+--- 2.5 Validacion automatizada (8 pts)
+  [0;32m[OK][0m    Prueba de carga presente
+  [0;32m[OK][0m    Umbrales definidos
+  [0;32m[OK][0m    Pruebas de humo o integracion presentes
+  [0;32m[OK][0m    El analisis ejecuta pruebas (provider job/web)
+  >> 2.5 = 8 / 8
+
+--- 2.6 Cadena de suministro y politicas (8 pts)
+  [0;32m[OK][0m    Trivy configurado para bloquear ante CVE criticas
+  [0;32m[OK][0m    Firma de imagen verificada con Cosign
+  Politicas activas: 3
+  [0;32m[OK][0m    Tres o mas politicas activas
+  [0;32m[OK][0m    Secretos gestionados de forma segura
+  [0;32m[OK][0m    Sin secretos en texto plano
+  >> 2.6 = 8 / 8
+
+--- Antipatrones (informativo, penalizacion manual)
+  [0;32m[OK][0m    Sin uso de la etiqueta latest
+  [0;31m[FALLA][0m Sin limites de recursos declarados
+
+================================================================
+ RESUMEN - carnet 202110363
+================================================================
+  2.1 Terraform ..............  8 / 8
+  2.2 Helm ...................  8 / 8
+  2.3 GitOps con ArgoCD ...... 14 / 14
+  2.4 Entrega progresiva ..... 14 / 14
+  2.5 Validacion automatizada   8 / 8
+  2.6 Seguridad y politicas ..  8 / 8
+  ------------------------------------
+  CONOCIMIENTO ............... 60 / 60
+
+  Pendiente de evaluacion presencial: 40 pts
+    1.1 Documentacion (8)   1.2 Diagrama (8)
+    1.3 Informe de incidente (10)   1.4 Preguntas teoricas (14)
+
+  [0;32mRequisitos eliminatorios: todos cumplidos[0m
+
+  Duracion: 45s    Reporte: reporte_p8_202110363.txt
+================================================================
