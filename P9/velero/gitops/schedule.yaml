@@ -1,0 +1,19 @@
+# Schedule de Velero: respaldo diario de todo el namespace de la
+# plataforma (sa-p5), incluidos los volúmenes persistentes (base de
+# datos). Ver política de retención documentada en P9/velero/README.md.
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: sa-platform-daily
+  namespace: velero
+  labels:
+    app.kubernetes.io/part-of: sa-platform
+spec:
+  schedule: "0 5 * * *" # 05:00 UTC diario
+  template:
+    includedNamespaces:
+      - sa-p5
+    snapshotVolumes: true
+    defaultVolumesToFsBackup: true
+    storageLocation: sa-platform-default
+    ttl: 240h0m0s # retención: 10 días

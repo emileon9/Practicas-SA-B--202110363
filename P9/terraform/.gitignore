@@ -1,0 +1,16 @@
+# Binarios de provider (grandes, específicos de plataforma). El lock SÍ se
+# versiona (fija versiones de provider), igual que en P8/terraform.
+.terraform/
+.terraform.tfstate.lock.info
+
+# Estado de Terraform: la Práctica 9 EXIGE backend remoto. Ningún
+# *.tfstate debe llegar nunca al repositorio, ni siquiera por accidente
+# mientras se prueba localmente antes de configurar el backend.
+*.tfstate
+*.tfstate.*
+
+# Configuración real del backend remoto (nombre del bucket) y variables
+# con valores propios del estudiante: se versiona solo el .example.
+backend.hcl
+*.auto.tfvars
+terraform.tfvars

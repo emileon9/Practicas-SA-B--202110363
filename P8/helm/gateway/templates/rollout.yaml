@@ -60,6 +60,17 @@ spec:
     spec:
       serviceAccountName: gateway-sa
       automountServiceAccountToken: false
+      # Anti-afinidad de Pods (Práctica 9). "preferred", no "required":
+      # ver justificación en helm/ms-users/templates/deployment.yaml.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: gateway
+                topologyKey: kubernetes.io/hostname
       securityContext:
         runAsNonRoot: true
         runAsUser: {{ .Values.runAsUser }}

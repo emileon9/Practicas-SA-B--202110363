@@ -1,0 +1,45 @@
+# Nivel intermedio del app-of-apps: reutiliza tal cual los 9 Application
+# ya existentes de la Práctica 8 (P8/argocd/applications/), sin modificar
+# ni un solo archivo de esa carpeta. Este Application solo le dice a
+# ArgoCD "sincroniza todo lo que haya en esa carpeta como manifiestos de
+# Application".
+#
+# Cadena completa:
+#   sa-platform-root (P9/argocd/applications/, este directorio)
+#     -> sa-platform-p8-apps (este archivo)
+#       -> 9 Applications de P8 (gateway, ms-*, cronjob-*, platform, secrets)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform-p8-apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: sa-platform
+
+  source:
+    repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+    targetRevision: master
+    path: P8/argocd/applications
+    directory:
+      recurse: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

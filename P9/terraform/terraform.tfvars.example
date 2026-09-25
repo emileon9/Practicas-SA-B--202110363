@@ -1,0 +1,6 @@
+# Copia a terraform.tfvars (ya está en .gitignore) y ajusta si tu
+# contexto local no es "docker-desktop".
+
+kubeconfig_path      = "~/.kube/config"
+kube_context          = "docker-desktop"
+argocd_chart_version  = "PENDIENTE-fijar-version-verificada" # ver runbook.md

@@ -1,0 +1,46 @@
+# Base de datos con estado (PostgreSQL) + su PersistentVolumeClaim.
+#
+# GAP real detectado al revisar P8: el chart P8/helm/platform solo
+# referencia `sa-postgresql.sa-p5.svc.cluster.local` (ver
+# P8/helm/platform/values.yaml) pero NUNCA declara el StatefulSet: la
+# base de datos se instaló manualmente en la Práctica 5 (chart Bitnami
+# postgresql, ver P5/charts/sa-platform/charts/postgresql-18.8.13.tgz) y
+# jamás quedó versionada como recurso propio en P8. Es exactamente la
+# debilidad que describe el enunciado de la Práctica 9: "los datos viven
+# en volúmenes que nadie respalda". P9/kubernetes/database/postgres.yaml
+# corrige esto siguiendo el mismo patrón que P8 ya usó para RabbitMQ
+# (P8/platform/rabbitmq.yaml: imagen oficial, no Bitnami, porque Bitnami
+# retiró sus imágenes gratuitas de Docker Hub).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform-database
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: sa-platform
+
+  source:
+    repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+    targetRevision: master
+    path: P9/kubernetes/database
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sa-p5
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

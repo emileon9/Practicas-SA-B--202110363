@@ -1,0 +1,21 @@
+# BackupStorageLocation: declara DÓNDE viven los respaldos (fuera del
+# clúster), sin contener credenciales. `credential.name` referencia el
+# Secret que crea `velero install` (ver P9/velero/install.sh), no uno
+# creado aquí.
+#
+# PENDIENTE: reemplazar `provider` y `bucket` con los valores reales una
+# vez definido el proveedor de almacenamiento externo (ver
+# P9/velero/README.md).
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: sa-platform-default
+  namespace: velero
+spec:
+  provider: PENDIENTE
+  objectStorage:
+    bucket: PENDIENTE-nombre-del-bucket
+  credential:
+    name: cloud-credentials
+    key: cloud
+  default: true

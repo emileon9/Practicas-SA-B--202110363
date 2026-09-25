@@ -26,6 +26,20 @@ spec:
     spec:
       serviceAccountName: ms-users-sa
       automountServiceAccountToken: false
+      # Anti-afinidad de Pods (Práctica 9, "Resiliencia ante pérdida de
+      # nodo"): pide al scheduler que prefiera repartir las réplicas en
+      # nodos distintos. "preferred", no "required": docker-desktop /
+      # minikube son de un solo nodo, y con "required" las 2 réplicas
+      # quedarían la segunda en Pending para siempre en ese entorno local.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: ms-users
+                topologyKey: kubernetes.io/hostname
       securityContext:
         runAsNonRoot: true
         runAsUser: {{ .Values.runAsUser }}

@@ -1,0 +1,41 @@
+# Solo el Schedule y el BackupStorageLocation de Velero (recursos
+# declarativos, sin credenciales) quedan bajo GitOps. La instalación de
+# Velero en sí (CRDs, controller, Secret con las credenciales del
+# almacenamiento externo) NO se gestiona con ArgoCD: requiere el CLI
+# `velero install` y un archivo de credenciales que nunca debe vivir en
+# git (ver P9/velero/README.md). Por eso esta Application depende de que
+# `velero install` ya se haya ejecutado (documentado como paso separado
+# del runbook, no automatizado por el app-of-apps).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-platform-velero-config
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: sa-platform
+
+  source:
+    repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+    targetRevision: master
+    path: P9/velero/gitops
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

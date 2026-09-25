@@ -1,0 +1,123 @@
+# PostgreSQL para sa-platform, con PersistentVolumeClaim real.
+#
+# GAP detectado en P8 (documentado también en
+# P9/argocd/applications/database.yaml): el Service
+# `sa-postgresql.sa-p5.svc.cluster.local` se referenciaba desde
+# P8/helm/platform/values.yaml pero nunca se declaró como recurso propio
+# — se instaló manualmente en la Práctica 5 con el chart Bitnami
+# (P5/charts/sa-platform/charts/postgresql-18.8.13.tgz). Este manifiesto
+# lo reemplaza con un StatefulSet versionado y respaldable, siguiendo el
+# mismo patrón que P8 ya usó para RabbitMQ (imagen oficial, no Bitnami,
+# no-root, credenciales desde el Secret que descifra Sealed Secrets):
+# ver P8/platform/rabbitmq.yaml.
+#
+# El nombre del Service (`sa-postgresql`) y el namespace (`sa-p5`) se
+# mantienen IDÉNTICOS a los que ya consume
+# P8/helm/platform/values.yaml (`postgresql.host`), para no romper
+# ningún microservicio existente.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sa-postgresql-data
+  namespace: sa-p5
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/part-of: sa-platform
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  # Sin storageClassName explicito: usa el StorageClass por defecto del
+  # cluster (docker-desktop/minikube ya trae uno). PENDIENTE: fijar un
+  # storageClassName explicito si el cluster de destino real no define
+  # uno por defecto (ver runbook.md, paso "Verificar la base de datos").
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sa-postgresql
+  namespace: sa-p5
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/part-of: sa-platform
+spec:
+  serviceName: sa-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgresql
+        app.kubernetes.io/part-of: sa-platform
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgresql
+          image: postgres:16
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: sa_app
+            - name: POSTGRES_DB
+              value: sa_platform
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sa-platform-db-credentials
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "sa_app", "-d", "sa_platform"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "sa_app", "-d", "sa_platform"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 6
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: sa-postgresql-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sa-postgresql
+  namespace: sa-p5
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/part-of: sa-platform
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: postgresql
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

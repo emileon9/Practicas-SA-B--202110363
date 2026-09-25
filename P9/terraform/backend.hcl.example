@@ -1,0 +1,12 @@
+# Copia este archivo a backend.hcl (NO lo versiones, ya está en .gitignore)
+# y complétalo con los valores reales antes de correr:
+#
+#   terraform init -backend-config=backend.hcl
+#
+# Ningún valor de este archivo es una credencial: el backend "gcs" se
+# autentica con las credenciales de la CLI de gcloud (`gcloud auth
+# application-default login`) o con GOOGLE_APPLICATION_CREDENTIALS,
+# nunca con un valor escrito aquí.
+
+bucket = "PENDIENTE-nombre-del-bucket-gcs"
+prefix = "sa-platform/p9/terraform/state"

@@ -1,0 +1,22 @@
+# Estado de Terraform: NUNCA en el repositorio (ver P9/terraform/.gitignore
+# para el detalle, este es un refuerzo a nivel de /P9).
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/backend.hcl
+terraform/terraform.tfvars
+
+# Credenciales del almacenamiento externo de Velero. Nunca en git.
+velero/credentials-velero
+velero/*.json
+velero/*.key
+
+# Llave privada de Sealed Secrets respaldada localmente. Nunca en git.
+scripts/sealed-secrets-key-backup.yaml
+
+# Evidencia generada por los scripts de prueba (logs con marcas de tiempo
+# reales, específicos de cada corrida local): se versiona la carpeta con
+# un README explicando qué debe subirse, no los logs binarios/grandes
+# generados automáticamente en cada intento.
+evidence/*.log
+!evidence/README.md
