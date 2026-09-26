@@ -2,5 +2,13 @@
 # contexto local no es "docker-desktop".
 
 kubeconfig_path      = "~/.kube/config"
-kube_context          = "docker-desktop"
-argocd_chart_version  = "PENDIENTE-fijar-version-verificada" # ver runbook.md
+kube_context         = "docker-desktop"
+argocd_chart_version = "PENDIENTE-fijar-version-verificada" # ver runbook.md
+
+# false: docker-desktop, donde ArgoCD ya se instaló manualmente (verificado
+#        con `helm list -n argocd` -> vacío, pero `kubectl get pods -n
+#        argocd` muestra los 7 pods corriendo). Terraform solo administra
+#        el AppProject + la Application raíz sobre ese ArgoCD existente.
+# true:  clúster nuevo/vacío (bootstrap de día cero real, o el clúster
+#        desechable de la prueba de DR) -- Terraform instala ArgoCD.
+manage_argocd_install = false

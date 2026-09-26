@@ -59,17 +59,26 @@ tomada en P8, ver [docs/bootstrap-diagram.md](docs/bootstrap-diagram.md)).
 
 ## 5. Qué ya está implementado
 
-- Estructura completa de Terraform (providers, variables, instalación de
-  ArgoCD vía Helm, AppProject + Application raíz), con backend remoto
-  `gcs` declarado (bucket pendiente de crear).
+- Estructura completa de Terraform (providers, variables, instalación
+  condicional de ArgoCD vía Helm, AppProject + Application raíz), con
+  backend remoto `gcs` declarado (bucket pendiente de crear).
+  **Validado en esta sesión** contra el clúster real de docker-desktop:
+  `terraform init`/`validate` correctos, y `terraform plan
+  -var="manage_argocd_install=false"` propone exactamente 2 recursos
+  (`AppProject` + `Application` raíz), sin tocar el ArgoCD ya instalado.
 - Los 10 manifiestos de `Application` del app-of-apps (1 raíz + 1 puente
   a P8 + database + velero-config; los 9 de P8 se reutilizan sin
   modificarlos).
-- `PostgreSQL` como `StatefulSet` + `PersistentVolumeClaim` real — antes
-  de esta práctica, el Service que consumían los microservicios
-  (`sa-postgresql`) no tenía ningún manifiesto versionado (ver el
+- `PostgreSQL` como `StatefulSet` + `PersistentVolumeClaim`, para
+  reconstruir el servicio **en un clúster nuevo y vacío**. Verificado
+  contra docker-desktop: `sa-postgresql` ya corre ahí como release real
+  de Helm (chart Bitnami `postgresql-18.8.13`, instalado desde la
+  Práctica 5, PVC real `data-sa-postgresql-0` con datos reales) — ese
+  release nunca quedó versionado como código en este repositorio, que es
+  el gap real que corrige este manifiesto. Por eso su `Application`
+  (`sa-platform-database`) tiene sync **manual**, no automático: ver el
   comentario de cabecera en
-  [kubernetes/database/postgres.yaml](kubernetes/database/postgres.yaml)).
+  [argocd/applications/database.yaml](argocd/applications/database.yaml).
 - Anti-afinidad de Pods agregada a los 5 charts de Deployment/Rollout de
   P8 (`gateway`, `ms-users`, `ms-products`, `ms-orders`,
   `ms-notifications`); los `PodDisruptionBudget`, las 2 réplicas por
@@ -83,13 +92,26 @@ tomada en P8, ver [docs/bootstrap-diagram.md](docs/bootstrap-diagram.md)).
 
 ## 6. Qué está preparado pero pendiente de ejecución/pruebas
 
-- `terraform apply` real contra un clúster (requiere el bucket del
-  backend remoto y un clúster corriendo — ninguno de los dos existe en
-  este momento, igual que P8 lo documentó honestamente en su propio
-  README).
+**Actualización real (a diferencia de cuando se escribió P8): el clúster
+`docker-desktop` sí está corriendo ahora**, con `sa-p5` completo y sano
+(verificado con `kubectl get all -n sa-p5`). Aun así, lo siguiente sigue
+pendiente:
+
+- `terraform apply` real (no solo `plan`) — requiere primero crear el
+  bucket del backend remoto (`terraform/backend.hcl.example`). El
+  `terraform plan` sí se corrió contra el clúster real (ver sección 5).
+- Ejecutar `terraform apply` completo (AppProject + Application raíz)
+  contra docker-desktop **todavía no se hizo**: aplicarlo pondría los 9
+  `Application` de P8 bajo el app-of-apps y crearía
+  `sa-platform-velero-config` — de bajo riesgo, pero se decidió no
+  hacerlo sin acordarlo primero, porque toca el ArgoCD que ya está en
+  producción local.
+- La prueba de destrucción/reconstrucción cronometrada (RTO real) se
+  hará contra un clúster **desechable** (minikube, disponible localmente
+  pero apagado), no contra docker-desktop, para no perder el estado real
+  que ya lleva más de 6 días corriendo ahí.
 - Instalación real de Velero (requiere el bucket externo y el archivo de
   credenciales, nunca versionados).
-- Ejecución del bootstrap completo, medición del RTO real.
 - Prueba de restauración de datos, medición del RPO real.
 - Prueba de pérdida de nodo (requiere un clúster de ≥2 nodos; no es
   posible demostrarla en un clúster local de un solo nodo — ver

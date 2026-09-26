@@ -1,6 +1,6 @@
 output "argocd_namespace" {
-  description = "Namespace donde quedó instalado ArgoCD."
-  value       = kubernetes_namespace.argocd.metadata[0].name
+  description = "Namespace donde corre ArgoCD (instalado por Terraform o adoptado, según manage_argocd_install)."
+  value       = var.argocd_namespace
 }
 
 output "root_application_name" {

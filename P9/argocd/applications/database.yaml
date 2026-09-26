@@ -1,16 +1,30 @@
 # Base de datos con estado (PostgreSQL) + su PersistentVolumeClaim.
 #
-# GAP real detectado al revisar P8: el chart P8/helm/platform solo
-# referencia `sa-postgresql.sa-p5.svc.cluster.local` (ver
-# P8/helm/platform/values.yaml) pero NUNCA declara el StatefulSet: la
-# base de datos se instaló manualmente en la Práctica 5 (chart Bitnami
-# postgresql, ver P5/charts/sa-platform/charts/postgresql-18.8.13.tgz) y
-# jamás quedó versionada como recurso propio en P8. Es exactamente la
-# debilidad que describe el enunciado de la Práctica 9: "los datos viven
-# en volúmenes que nadie respalda". P9/kubernetes/database/postgres.yaml
-# corrige esto siguiendo el mismo patrón que P8 ya usó para RabbitMQ
-# (P8/platform/rabbitmq.yaml: imagen oficial, no Bitnami, porque Bitnami
-# retiró sus imágenes gratuitas de Docker Hub).
+# GAP real detectado al revisar P8, CORREGIDO tras verificar el clúster
+# real (docker-desktop) antes de aplicar nada: `sa-postgresql` SÍ existe
+# y SÍ tiene datos reales -- pero como un release de Helm (`helm list -n
+# sa-p5` -> `sa-postgresql`, chart Bitnami `postgresql-18.8.13`,
+# instalado manualmente desde la Práctica 5, PVC real
+# `data-sa-postgresql-0`). El gap real no es "no hay base de datos con
+# volumen": es que ESE release nunca quedó versionado como código en
+# ningún repositorio de este proyecto -- si se pierde el clúster sin
+# haberlo respaldado con Velero, nadie tiene un manifiesto para
+# reconstruirlo igual, solo el chart genérico de Bitnami sin los valores
+# reales (contraseña, tamaño de PVC) que usó P5.
+#
+# `P9/kubernetes/database/postgres.yaml` es el manifiesto de reemplazo
+# (imagen oficial `postgres:16`, no Bitnami -- mismo motivo que ya
+# documentó P8 para RabbitMQ) para reconstruir la base de datos EN UN
+# CLÚSTER NUEVO Y VACÍO donde ese release de Helm no existe todavía (el
+# caso real del bootstrap de día cero, o el clúster desechable de la
+# prueba de DR). NO se sincroniza automáticamente aquí para evitar que,
+# si este Application se aplica por error contra docker-desktop (donde
+# el release de Helm YA existe con el mismo nombre de Service/StatefulSet
+# `sa-postgresql`), ArgoCD intente reemplazar campos inmutables del
+# StatefulSet y falle el sync. `syncPolicy` queda en manual a propósito:
+# se sincroniza a mano (`argocd app sync sa-platform-database`) solo
+# cuando se confirma que no existe ya un `sa-postgresql` gestionado por
+# Helm en el namespace de destino (`helm list -n sa-p5`).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -32,10 +46,10 @@ spec:
     server: https://kubernetes.default.svc
     namespace: sa-p5
 
+  # Sync manual a propósito -- ver comentario de cabecera. Antes de
+  # correr `argocd app sync sa-platform-database`, verificar:
+  #   helm list -n sa-p5   # no debe listar "sa-postgresql"
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
     syncOptions:
       - CreateNamespace=false
     retry:

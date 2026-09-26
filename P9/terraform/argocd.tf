@@ -11,8 +11,38 @@
 #
 # A partir de aquí, ArgoCD es dueño de todo lo que hay debajo del
 # app-of-apps; Terraform no vuelve a tocar esos recursos.
+#
+# HALLAZGO REAL (verificado contra el clúster docker-desktop antes de
+# aplicar nada): el ArgoCD que corre ahí se instaló con manifiestos
+# crudos (`kubectl apply -f .../install.yaml`), NO con Helm — `helm list
+# -n argocd` no devuelve nada. Si `helm_release.argocd` de abajo se
+# aplicara contra ESE clúster, Terraform intentaría crear un namespace
+# que ya existe y una instalación paralela que chocaría por nombre con
+# cada Deployment/Service/ConfigMap ya presentes.
+#
+# Por eso esta instalación es condicional (`var.manage_argocd_install`):
+#   - true  (default): clúster nuevo/vacío -- el caso real de la Práctica
+#     9 (bootstrap de día cero en un clúster destruido, o el clúster
+#     minikube de la prueba de DR). Terraform SÍ instala ArgoCD.
+#   - false: clúster donde ArgoCD ya existe fuera de Terraform (el caso
+#     real de docker-desktop hoy). Terraform NO toca la instalación de
+#     ArgoCD y solo administra el AppProject + la Application raíz sobre
+#     el namespace `var.argocd_namespace` ya existente.
+variable "manage_argocd_install" {
+  description = <<-EOT
+    true para que Terraform instale ArgoCD (clúster nuevo/vacío, el caso
+    real del bootstrap de día cero). false para adoptar un ArgoCD que ya
+    existe en el clúster de destino (caso real de docker-desktop, donde
+    se instaló manualmente antes de esta práctica) -- Terraform entonces
+    solo administra el AppProject y la Application raíz.
+  EOT
+  type        = bool
+  default     = true
+}
 
 resource "kubernetes_namespace" "argocd" {
+  count = var.manage_argocd_install ? 1 : 0
+
   metadata {
     name = var.argocd_namespace
     labels = {
@@ -23,11 +53,13 @@ resource "kubernetes_namespace" "argocd" {
 }
 
 resource "helm_release" "argocd" {
+  count = var.manage_argocd_install ? 1 : 0
+
   name       = "argocd"
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argo-cd"
   version    = var.argocd_chart_version
-  namespace  = kubernetes_namespace.argocd.metadata[0].name
+  namespace  = var.argocd_namespace
 
   # Instalación mínima: server en modo inseguro por HTTP dentro del
   # clúster (se accede con `kubectl port-forward`, igual que en P8 no se
@@ -40,6 +72,8 @@ resource "helm_release" "argocd" {
 
   wait    = true
   timeout = 600
+
+  depends_on = [kubernetes_namespace.argocd]
 }
 
 # --- AppProject + Application raíz (app-of-apps) ---
@@ -69,7 +103,7 @@ resource "kubernetes_manifest" "sa_platform_project" {
     kind       = "AppProject"
     metadata = {
       name      = "sa-platform"
-      namespace = kubernetes_namespace.argocd.metadata[0].name
+      namespace = var.argocd_namespace
     }
     spec = {
       description = "Plataforma de microservicios sa-platform (Practicas 4-9, USAC Software Avanzado)."
@@ -114,6 +148,10 @@ resource "kubernetes_manifest" "sa_platform_project" {
     }
   }
 
+  # depends_on con lista posiblemente vacía (count=0): Terraform la
+  # tolera sin problema -- si `manage_argocd_install=false`, este
+  # AppProject depende de que quien ejecuta el bootstrap haya verificado
+  # a mano que ArgoCD ya está `Running` (ver docs/runbook.md, sección 3).
   depends_on = [helm_release.argocd]
 }
 
@@ -123,7 +161,7 @@ resource "kubernetes_manifest" "sa_platform_root" {
     kind       = "Application"
     metadata = {
       name      = "sa-platform-root"
-      namespace = kubernetes_namespace.argocd.metadata[0].name
+      namespace = var.argocd_namespace
       labels = {
         "app.kubernetes.io/part-of" = "sa-platform"
       }
@@ -146,7 +184,7 @@ resource "kubernetes_manifest" "sa_platform_root" {
       }
       destination = {
         server    = "https://kubernetes.default.svc"
-        namespace = kubernetes_namespace.argocd.metadata[0].name
+        namespace = var.argocd_namespace
       }
       syncPolicy = {
         automated = {
