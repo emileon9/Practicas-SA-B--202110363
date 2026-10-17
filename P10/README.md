@@ -78,14 +78,66 @@ prueba obligatoria de la sección 4 del enunciado, con comandos concretos.
 - **SLO, presupuesto de error, 4 alertas, dashboard**: definidos como
   código (reglas de Prometheus + ConfigMap de Grafana), con YAML/JSON
   validado sintácticamente.
+- **Stack de observabilidad DESPLEGADO REAL contra docker-desktop**
+  (instalado directo con `helm install`/`upgrade` desde los charts
+  oficiales, sin pasar por GitOps porque los commits de P10 siguen
+  locales). **11/11 Pods `Running`, 0 reinicios, estable** (Prometheus,
+  Alertmanager, Grafana, kube-state-metrics, Prometheus Operator, Tempo,
+  Loki, loki-gateway, loki-canary, Promtail, OTel Collector).
+  Verificado con llamadas HTTP reales, no solo `kubectl get`:
+  - Prometheus: `/api/v1/targets` → scrapeando de verdad `apiserver`,
+    `coredns`, `kubelet` (3 endpoints), `kube-state-metrics`,
+    `alertmanager`, `prometheus-operator` y a sí mismo, todos `up`.
+  - Loki: `/loki/api/v1/query_range` → logs reales ya indexados
+    (`loki-gateway`, `grafana`) llegando desde Promtail.
+  - Tempo: `/ready` → `ready`, `/status/version` → `v2.9.0`.
+  - Grafana: `/api/health` → `database: ok`; `/api/datasources` → los 4
+    datasources (Prometheus, Loki, Tempo, Alertmanager) provisionados
+    automáticamente y apuntando a las URLs correctas.
+  - **6 bugs reales encontrados y corregidos durante la instalación**
+    (no hipotéticos — cada uno rompió el despliegue real antes de
+    corregirse):
+    1. `node-exporter` en `CrashLoopBackOff` por una limitación de
+       Docker Desktop/WSL2 (el mount raíz del host no es
+       shared/slave) → deshabilitado, no crítico (las métricas de
+       saturación ya vienen de los propios servicios).
+    2. Chart de Loki exige `storage.type: filesystem` explícito además
+       de `schemaConfig.object_store` (chart por defecto asume `s3`)
+       → corregido.
+    3. Loki activa multi-tenencia por defecto (`auth_enabled: true`,
+       exigiría el header `X-Scope-OrgID` en todo el pipeline) →
+       deshabilitada para este despliegue de un solo tenant.
+    4. Memcached de Loki (`chunksCache`/`resultsCache`) no podía
+       programarse por memoria insuficiente del nodo → deshabilitados
+       (cachés de rendimiento, no de correctitud).
+    5. Promtail: `/run/promtail` es un `hostPath` no escribible por el
+       UID no-root en docker-desktop/WSL2 → movido el archivo de
+       posiciones a un `emptyDir` propio.
+    6. **Grafana tardaba >5 minutos y terminaba reiniciado por el
+       liveness probe** — causa raíz real (no timing): `limits.cpu:
+       200m` estrangulaba por CFS throttling a un proceso que necesita
+       arrancar ~10 plugins empaquetados. Confirmado con `kubectl top
+       pod` mostrando el contenedor pegado exactamente en 202m mientras
+       el log dejaba de avanzar. Subido a `500m` → arranque en
+       segundos, no minutos.
+    7. Datasource de Tempo en Grafana apuntaba al puerto `3100`; el
+       puerto HTTP real es `3200` (`tempo-prom-metrics`) → corregido y
+       verificado con `/ready`.
 
 ## 6. Qué está preparado pero pendiente de ejecución/pruebas
 
-- El stack de observabilidad **no se ha desplegado** contra un clúster
-  real todavía (versiones de los 4 charts de Helm dejadas `PENDIENTE` a
-  propósito, sin verificar contra el repo real de charts).
-- Ninguna de las 10 pruebas obligatorias de la sección 4 del enunciado se
-  ha ejecutado contra un entorno real.
+- **El despliegue vía GitOps en sí** (las Applications de ArgoCD) sigue
+  `OutOfSync`/sin sincronizar porque los commits de P10 no se han
+  subido — el stack real de arriba se instaló directo con `helm`, como
+  acordamos, no vía `sa-observability-root`.
+- Los 3 servicios instrumentados (`gateway`, `ms-orders`, `ms-users`)
+  **no están corriendo con la instrumentación real todavía** en el
+  clúster (el código está commiteado localmente pero las imágenes
+  Docker desplegadas siguen siendo las de antes de P10 — requiere un
+  release nuevo, fuera del alcance de esta sesión).
+- Ninguna de las 10 pruebas obligatorias de la sección 4 del enunciado
+  se ha ejecutado de punta a punta (requieren las 3 imágenes
+  instrumentadas desplegadas).
 - El receiver `critical-alerts` de Alertmanager no tiene un webhook real
   configurado (nunca se versiona un token/URL real en git).
 - `docs/operation-report.md`: los 6 campos están preparados, 4 de 6 con

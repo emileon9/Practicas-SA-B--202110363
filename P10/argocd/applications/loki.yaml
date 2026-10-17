@@ -13,7 +13,7 @@ spec:
   sources:
     - repoURL: https://grafana.github.io/helm-charts
       chart: loki
-      targetRevision: "" # PENDIENTE: fijar versión real verificada
+      targetRevision: "7.3.0"
       helm:
         valueFiles:
           - $values/P10/observability/loki/values.yaml
@@ -56,7 +56,7 @@ spec:
   sources:
     - repoURL: https://grafana.github.io/helm-charts
       chart: promtail
-      targetRevision: "" # PENDIENTE: fijar versión real verificada
+      targetRevision: "6.17.1"
       helm:
         valueFiles:
           - $values/P10/observability/loki/promtail-values.yaml

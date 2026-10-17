@@ -16,7 +16,7 @@ spec:
   sources:
     - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
       chart: opentelemetry-collector
-      targetRevision: "" # PENDIENTE: fijar versión real verificada
+      targetRevision: "0.176.0"
       helm:
         valueFiles:
           - $values/P10/observability/otel-collector/values.yaml

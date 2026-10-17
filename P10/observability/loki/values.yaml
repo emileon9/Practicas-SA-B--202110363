@@ -17,6 +17,20 @@ fullnameOverride: loki
 deploymentMode: SingleBinary
 
 loki:
+  # El chart activa multi-tenencia por defecto (auth_enabled: true),
+  # exigiendo el header X-Scope-OrgID en cada escritura/consulta
+  # (Promtail, datasource de Grafana) -- innecesario para un despliegue
+  # de un solo tenant como este. Encontrado al revisar la salida de
+  # `helm install --dry-run`.
+  auth_enabled: false
+  # BUG real encontrado al instalar contra el clúster real: sin esto, el
+  # chart 7.3.0 asume storage.type: s3 por defecto (ver
+  # `helm show values grafana/loki --version 7.3.0`) y falla el render
+  # exigiendo storage.bucketNames.chunks, aunque schemaConfig ya declare
+  # object_store: filesystem mas abajo -- son dos configuraciones
+  # distintas del chart, no una sola.
+  storage:
+    type: filesystem
   commonConfig:
     replication_factor: 1
   schemaConfig:
@@ -48,6 +62,18 @@ singleBinary:
 
 image:
   tag: "" # PENDIENTE: fijar tag real verificado
+
+# Caches de memcached deshabilitados: verificado contra el clúster real
+# que el nodo (docker-desktop, ~8Gi) llega a "Insufficient memory" al
+# intentar programar loki-chunks-cache-0 con todo el stack de
+# observabilidad instalado junto a sa-p5. Son cachés de RENDIMIENTO
+# (aceleran consultas repetidas), no afectan la correctitud de Loki --
+# aceptable deshabilitarlas en este clúster de un solo nodo con recursos
+# limitados; en un clúster de producción real se reactivarían.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
 
 # Desactiva los componentes del modo distribuido que SingleBinary no usa,
 # para no desperdiciar recursos del único nodo con réplicas en 0 que de

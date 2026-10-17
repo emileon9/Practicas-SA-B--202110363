@@ -17,7 +17,7 @@ spec:
   sources:
     - repoURL: https://prometheus-community.github.io/helm-charts
       chart: kube-prometheus-stack
-      targetRevision: "" # PENDIENTE: fijar versión real verificada (ver P10/observability/kube-prometheus-stack/values.yaml)
+      targetRevision: "92.10.1"
       helm:
         valueFiles:
           - $values/P10/observability/kube-prometheus-stack/values.yaml

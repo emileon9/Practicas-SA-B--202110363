@@ -4,9 +4,26 @@
 # para no mezclar instalación de infraestructura con configuración).
 fullnameOverride: promtail
 
+# BUG real encontrado al instalar contra el clúster real: el chart monta
+# /run/promtail como hostPath (directorio del NODO, no un volumen propio
+# del Pod) -- en docker-desktop/WSL2 ese directorio del host no es
+# escribible por el UID no-root configurado abajo ("error writing
+# positions file: permission denied", en bucle). Se mueve el archivo de
+# posiciones a un emptyDir propio (/tmp), mismo patrón que ya usan
+# gateway/ms-orders/ms-users para su propio /tmp con
+# readOnlyRootFilesystem=true.
+extraVolumes:
+  - name: tmp
+    emptyDir: {}
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp
+
 config:
   clients:
     - url: http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push
+  positions:
+    filename: /tmp/positions.yaml
   snippets:
     # Extrae trace_id y level del log JSON estructurado que escriben los 3
     # servicios instrumentados (ver P10/instrumentation/*/logging.*) y los
