@@ -19,6 +19,17 @@ spec:
       chart: kube-prometheus-stack
       targetRevision: "92.10.1"
       helm:
+        # BUG real encontrado al sincronizar contra el clúster real:
+        # fullnameOverride: kube-prometheus-stack (en values.yaml) solo
+        # cubre los recursos que templatea el chart raiz -- los
+        # subcharts "grafana" y "kube-state-metrics" arman su propio
+        # nombre a partir de .Release.Name, que ArgoCD fija al nombre de
+        # la Application ("sa-observability-kube-prometheus-stack") si
+        # no se especifica releaseName aqui. Sin esto, ArgoCD creaba
+        # Deployments DUPLICADOS junto a los que ya existian del
+        # `helm install` manual (confirmado con `kubectl get deployment
+        # -n observability`, dos Deployments de grafana a la vez).
+        releaseName: kube-prometheus-stack
         valueFiles:
           - $values/P10/observability/kube-prometheus-stack/values.yaml
     - repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
