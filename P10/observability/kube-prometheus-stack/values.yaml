@@ -1,0 +1,134 @@
+# Values para el chart oficial prometheus-community/kube-prometheus-stack.
+# Instala en una sola Application: Prometheus Operator + Prometheus +
+# Alertmanager + Grafana + kube-state-metrics + node-exporter. Se eligió
+# este chart (en vez de instalar cada pieza por separado) para no duplicar
+# funcionalidad ni reinventar el cableado Prometheus<->Alertmanager<->Grafana
+# que el chart ya resuelve.
+#
+# IMPORTANTE (verificado contra P8/security/kyverno/*.yaml, que aplica a
+# TODO el clúster, no solo a sa-p5): cada sub-componente de abajo fija
+# explícitamente runAsNonRoot, resources y evita cualquier tag "latest" —
+# si no, Kyverno rechaza los Pods en modo Enforce.
+#
+# PENDIENTE antes de instalar de verdad: correr
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm search repo prometheus-community/kube-prometheus-stack --versions
+# y fijar la versión exacta en el Application de ArgoCD
+# (P10/argocd/applications/kube-prometheus-stack.yaml) — no se afirma aquí
+# una versión sin haberla verificado contra el repo real de charts.
+
+fullnameOverride: kube-prometheus-stack
+
+# --- Prometheus Operator ---
+prometheusOperator:
+  image:
+    tag: "" # PENDIENTE: fijar tag real verificado (el chart trae un default no-latest)
+  admissionWebhooks:
+    patch:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+
+# --- Prometheus server ---
+prometheus:
+  prometheusSpec:
+    # Retención corta: clúster local de un solo nodo, sin backend remoto de
+    # almacenamiento a largo plazo para métricas (fuera del alcance de P10).
+    retention: 3d
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { cpu: 500m, memory: 1Gi }
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      fsGroup: 65534
+    # Permite que Prometheus descubra ServiceMonitor/PodMonitor fuera de su
+    # propio namespace (necesario: los 3 servicios instrumentados corren en
+    # sa-p5, no en el namespace de observabilidad).
+    serviceMonitorNamespaceSelector: {}
+    podMonitorNamespaceSelector: {}
+    ruleNamespaceSelector: {}
+    # Volumen persistente pequeño: suficiente para 3 días de retención en
+    # un clúster de prueba, no para producción.
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+# --- Alertmanager ---
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits: { cpu: 100m, memory: 128Mi }
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+  # Configuración real de receivers en P10/alerts/alertmanager-config.yaml
+  # (Secret aparte, nunca con credenciales reales en este archivo).
+
+# --- Grafana (incluida en este chart, no se instala por separado) ---
+grafana:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 472 # usuario "grafana" de la imagen oficial
+    fsGroup: 472
+  containerSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+  image:
+    tag: "" # PENDIENTE: fijar tag real verificado
+  # Datasources pre-provisionados: Prometheus (este mismo chart), Loki y
+  # Tempo (charts separados, mismo namespace de observabilidad) — así
+  # Grafana queda lista para correlacionar métricas/logs/trazas sin pasos
+  # manuales (ver P10/dashboards/).
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki-gateway.observability.svc.cluster.local
+      access: proxy
+      isDefault: false
+      jsonData:
+        derivedFields:
+          # Extrae el trace_id de los logs JSON estructurados (ver
+          # P10/instrumentation/*/logging.*) y arma el enlace directo a la
+          # traza en Tempo -- esto es lo que pide el enunciado: "consultar
+          # un registro desde una traza y localizar una traza desde un
+          # registro".
+          - datasourceUid: tempo
+            matcherRegex: '"trace_id":"(\w+)"'
+            name: TraceID
+            url: "$${__value.raw}"
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo.observability.svc.cluster.local:3100
+      access: proxy
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: Loki
+          filterByTraceID: true
+        serviceMap:
+          datasourceUid: prometheus
+  grafana.ini:
+    security:
+      # Sin exposición pública: se accede con kubectl port-forward, igual
+      # que ArgoCD (ver P9/terraform/argocd.tf, server.insecure).
+      allow_embedding: false
+    auth.anonymous:
+      enabled: false

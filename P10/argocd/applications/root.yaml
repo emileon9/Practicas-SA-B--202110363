@@ -1,0 +1,41 @@
+# App-of-apps del stack de observabilidad, mismo patrón que
+# P9/terraform/argocd.tf (kubernetes_manifest.sa_platform_root) pero para
+# el AppProject sa-observability. Se aplica por separado (ver
+# P10/argocd/README.md) en vez de fusionarse dentro de sa-platform-root,
+# porque son dos preocupaciones distintas (plataforma de negocio vs.
+# observabilidad) con AppProjects de alcance distinto.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-observability-root
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-observability
+spec:
+  project: sa-observability
+  source:
+    repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+    targetRevision: master
+    path: P10/argocd/applications
+    directory:
+      recurse: false
+      # Excluye este mismo archivo (root.yaml) y rollout-analysis.yaml
+      # (ver P10/rollouts/) para que este Application no intente
+      # gestionarse a sí mismo ni mezclar el AnalysisTemplate -- ese vive
+      # en sa-platform (namespace sa-p5), no en sa-observability.
+      exclude: "{root.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

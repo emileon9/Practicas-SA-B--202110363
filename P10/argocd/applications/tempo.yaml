@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-observability-tempo
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: sa-observability
+
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: tempo
+      targetRevision: "" # PENDIENTE: fijar versión real verificada
+      helm:
+        valueFiles:
+          - $values/P10/observability/tempo/values.yaml
+    - repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+      targetRevision: master
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

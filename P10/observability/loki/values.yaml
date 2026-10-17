@@ -1,0 +1,82 @@
+# Values para el chart oficial grafana/loki (modo "SingleBinary", el
+# perfil que el propio chart recomienda para clústeres pequeños/locales --
+# no el modo "distributed" ni "simple-scalable", que son para producción
+# a escala y desperdiciarían el único nodo disponible).
+#
+# Incluye Promtail como DaemonSet: lee los logs JSON estructurados que ya
+# escriben los 3 servicios instrumentados (stdout del contenedor) y los
+# envía a Loki con el label trace_id extraído, sin que cada servicio tenga
+# que hablarle a Loki directamente.
+#
+# PENDIENTE antes de instalar de verdad:
+#   helm search repo grafana/loki --versions
+#   helm search repo grafana/promtail --versions
+
+fullnameOverride: loki
+
+deploymentMode: SingleBinary
+
+loki:
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  # Sin almacenamiento de objetos externo (S3/GCS) por simplicidad: usa el
+  # filesystem del propio PVC. Para producción real, migrar a un bucket
+  # externo, mismo patrón que P9/velero (ver P10/README.md, limitaciones).
+  limits_config:
+    retention_period: 24h
+
+singleBinary:
+  replicas: 1
+  persistence:
+    size: 5Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 300m, memory: 512Mi }
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    fsGroup: 10001
+
+image:
+  tag: "" # PENDIENTE: fijar tag real verificado
+
+# Desactiva los componentes del modo distribuido que SingleBinary no usa,
+# para no desperdiciar recursos del único nodo con réplicas en 0 que de
+# todas formas Kyverno rechazaría por no declarar resources.
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+distributor:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+
+gateway:
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 100m, memory: 64Mi }
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101

@@ -1,0 +1,43 @@
+# Fuente múltiple (igual patrón que P8/argocd/applications/sa-platform-ms-orders.yaml):
+#   - source 1: el chart oficial de prometheus-community, directo desde su
+#     repo de Helm (no un fork, no un .tgz vendorizado).
+#   - source 2: nuestros values.yaml versionados en este repositorio.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-observability-kube-prometheus-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1" # antes que Tempo/Loki/Collector: Grafana los referencia como datasource
+spec:
+  project: sa-observability
+
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: "" # PENDIENTE: fijar versión real verificada (ver P10/observability/kube-prometheus-stack/values.yaml)
+      helm:
+        valueFiles:
+          - $values/P10/observability/kube-prometheus-stack/values.yaml
+    - repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+      targetRevision: master
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

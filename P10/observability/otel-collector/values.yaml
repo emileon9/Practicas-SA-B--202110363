@@ -1,0 +1,87 @@
+# Values para el chart oficial open-telemetry/opentelemetry-collector,
+# modo "deployment" (no DaemonSet: los 3 servicios instrumentados envían
+# directamente al Service de este Collector por OTLP/gRPC, no hace falta
+# un agente por nodo en un clúster de un solo nodo).
+#
+# Responsabilidad de este Collector: recibir OTLP (trazas + métricas) de
+# gateway/ms-orders/ms-users, reenviar las TRAZAS a Tempo. Las MÉTRICAS no
+# se reenvían por aquí -- cada servicio expone su propio endpoint
+# /metrics (ver P10/instrumentation/*/metrics.*) y Prometheus las scrapea
+# directo vía ServiceMonitor (P10/observability/kube-prometheus-stack ya
+# tiene serviceMonitorNamespaceSelector: {} para esto). Mantener las
+# métricas fuera del Collector evita un salto de red adicional y un punto
+# único de fallo compartido entre trazas y métricas.
+#
+# PENDIENTE antes de instalar de verdad:
+#   helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+#   helm search repo open-telemetry/opentelemetry-collector --versions
+
+fullnameOverride: otel-collector
+
+mode: deployment
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "" # PENDIENTE: fijar tag real verificado (no-latest)
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 300m, memory: 256Mi }
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  processors:
+    batch: {}
+    # Elimina cualquier atributo de alta cardinalidad que un servicio
+    # instrumentado pudiera agregar por error (ver restricción del
+    # enunciado: nunca etiquetar por user_id/request_id). Capa de
+    # seguridad adicional, no reemplaza la disciplina en el código de
+    # instrumentación.
+    attributes/strip-high-cardinality:
+      actions:
+        - key: user_id
+          action: delete
+        - key: http.request.id
+          action: delete
+  exporters:
+    otlp/tempo:
+      endpoint: tempo.observability.svc.cluster.local:4317
+      tls:
+        insecure: true
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [batch, attributes/strip-high-cardinality]
+        exporters: [otlp/tempo]
+      # Pipeline de métricas deshabilitado a propósito -- ver nota de
+      # responsabilidad arriba. Si en el futuro se decide centralizar
+      # métricas aquí también, agregar un exporter "prometheus" y
+      # exponerlo vía Service para que Prometheus lo scrapee.
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP

@@ -3,11 +3,24 @@ import cors from "cors";
 import { router } from "./routes";
 import { authMiddleware } from "./middleware/auth.middleware";
 import { env } from "./config/env";
+import { metricsMiddleware, registry } from "./observability/metrics";
+import { requestLoggingMiddleware } from "./observability/logger";
 
 const app = express();
 
 app.use(cors());
+app.use(metricsMiddleware);
+app.use(requestLoggingMiddleware);
 app.use(authMiddleware);
+
+// /metrics antes del proxy /api: si se montara despues de "/api", una
+// peticion real a /api/metrics (si algun microservicio futuro expusiera
+// esa ruta) podria chocar por el orden de mounting. Aqui no hay colision
+// real hoy, pero es la forma correcta de garantizarlo.
+app.get("/metrics", async (_req, res) => {
+  res.set("Content-Type", registry.contentType);
+  res.end(await registry.metrics());
+});
 
 // El proxy hacia los microservicios va ANTES de express.json(): asi el
 // body de las peticiones (por ejemplo POST /api/users/graphql) llega

@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-observability-otel-collector
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-observability
+  annotations:
+    # Después de Tempo: el Collector exporta trazas hacia
+    # tempo.observability.svc.cluster.local:4317, necesita que ese Service
+    # ya exista.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: sa-observability
+
+  sources:
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: "" # PENDIENTE: fijar versión real verificada
+      helm:
+        valueFiles:
+          - $values/P10/observability/otel-collector/values.yaml
+    - repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+      targetRevision: master
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

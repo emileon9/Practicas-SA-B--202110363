@@ -1,0 +1,82 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-observability-loki
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: sa-observability
+
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki
+      targetRevision: "" # PENDIENTE: fijar versión real verificada
+      helm:
+        valueFiles:
+          - $values/P10/observability/loki/values.yaml
+    - repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+      targetRevision: master
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m
+---
+# Promtail como Application separada (fuente distinta: ya no es
+# "almacenamiento de logs" sino "recolección de logs") -- mismo criterio
+# de una responsabilidad por Application que usa el resto del proyecto.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sa-observability-promtail
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: sa-observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "1" # después de Loki: Promtail necesita el Service de Loki ya creado
+spec:
+  project: sa-observability
+
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: promtail
+      targetRevision: "" # PENDIENTE: fijar versión real verificada
+      helm:
+        valueFiles:
+          - $values/P10/observability/loki/promtail-values.yaml
+    - repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
+      targetRevision: master
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

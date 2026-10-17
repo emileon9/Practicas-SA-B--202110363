@@ -1,0 +1,41 @@
+# Values para el chart oficial grafana/tempo (modo single-binary, no el
+# modo distribuido -- un clúster local de un solo nodo no necesita ni
+# puede justificar microservicios separados para Tempo).
+#
+# PENDIENTE antes de instalar de verdad:
+#   helm repo add grafana https://grafana.github.io/helm-charts
+#   helm search repo grafana/tempo --versions
+# y fijar la versión real en el Application de ArgoCD.
+
+fullnameOverride: tempo
+
+tempo:
+  # Recibe OTLP directamente del OTel Collector (P10/observability/otel-collector),
+  # no de los servicios instrumentados directamente -- un único punto de
+  # entrada de telemetría, más fácil de asegurar y de cambiar de backend
+  # después sin tocar el código de los servicios.
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  retention: 24h # suficiente para demostrar correlación log<->traza, no para producción
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: 300m, memory: 512Mi }
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+
+image:
+  tag: "" # PENDIENTE: fijar tag real verificado
+
+persistence:
+  enabled: true
+  size: 2Gi

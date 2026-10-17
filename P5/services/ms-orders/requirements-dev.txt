@@ -1,3 +1,6 @@
 -r requirements.txt
 pytest==8.3.4
-httpx==0.28.1
+# httpx ya es dependencia de runtime (ver requirements.txt, Practica 10:
+# lo usa app/services/users_client.py), no hace falta repetirla aqui.
+# Los tests usan TestClient (sincrono) incluso para la ruta async
+# /orders, asi que no hace falta pytest-asyncio.

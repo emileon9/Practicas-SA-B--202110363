@@ -1,0 +1,47 @@
+# Values para el chart oficial grafana/promtail: DaemonSet que lee
+# /var/log/pods/* de cada nodo y envía a Loki. Separado del chart de Loki
+# (una Application por responsabilidad, mismo criterio que P8/P9 ya usan
+# para no mezclar instalación de infraestructura con configuración).
+fullnameOverride: promtail
+
+config:
+  clients:
+    - url: http://loki-gateway.observability.svc.cluster.local/loki/api/v1/push
+  snippets:
+    # Extrae trace_id y level del log JSON estructurado que escriben los 3
+    # servicios instrumentados (ver P10/instrumentation/*/logging.*) y los
+    # agrega como labels de Loki -- esto es lo que permite "encontrar un
+    # registro desde una traza y una traza desde un registro" sin tener
+    # que parsear el JSON a mano en cada consulta.
+    pipelineStages:
+      - cri: {}
+      - json:
+          expressions:
+            trace_id: trace_id
+            level: level
+            service: service
+      - labels:
+          trace_id:
+          level:
+          service:
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { cpu: 150m, memory: 128Mi }
+
+image:
+  tag: "" # PENDIENTE: fijar tag real verificado
+
+# No-root con DAC_READ_SEARCH (en vez de correr como root, que violaría
+# disallow-root-user de Kyverno Y es innecesario): esa capability basta
+# para leer /var/log/pods de otros contenedores sin ser root. PENDIENTE
+# verificar en el clúster real: si el driver de contenedores de
+# docker-desktop deja esos logs con permisos que ni DAC_READ_SEARCH
+# resuelve, puede requerir ajustar el GID del volumen en vez de esto.
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+    add: ["DAC_READ_SEARCH"]
