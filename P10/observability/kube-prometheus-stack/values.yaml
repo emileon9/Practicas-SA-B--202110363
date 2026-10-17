@@ -128,11 +128,13 @@ grafana:
   # estrangulado por CFS throttling del propio Kubernetes -- confirmado
   # con `kubectl top pod --containers`, que mostraba el contenedor
   # consumiendo EXACTAMENTE 202m (pegado al limite) mientras el log
-  # dejaba de avanzar por minutos. 500m es suficiente para que termine de
-  # arrancar en segundos en vez de minutos.
+  # dejaba de avanzar por minutos. Un primer ajuste a 500m/384Mi volvio a
+  # quedar exactamente pegado al limite (502m/383Mi) en un reinicio
+  # posterior -- se sube con mas margen esta vez para no repetir el
+  # mismo ciclo.
   resources:
-    requests: { cpu: 100m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 384Mi }
+    requests: { cpu: 150m, memory: 192Mi }
+    limits: { cpu: 1000m, memory: 768Mi }
   image:
     tag: "" # PENDIENTE: fijar tag real verificado
   # BUG real encontrado al instalar contra el clúster real: Grafana
