@@ -24,8 +24,11 @@ spec:
     repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
     targetRevision: master
     path: P8/argocd/applications
-    directory:
-      recurse: false
+    # Sin bloque "directory": recurse=false es el valor por defecto de
+    # ArgoCD y el servidor lo omite al persistir el recurso vivo, por lo
+    # que declararlo aqui explicitamente deja el Application en OutOfSync
+    # permanente (el objeto vivo nunca puede igualar al manifiesto
+    # deseado en ese campo).
 
   destination:
     server: https://kubernetes.default.svc
