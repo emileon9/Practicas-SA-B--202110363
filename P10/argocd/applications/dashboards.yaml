@@ -13,6 +13,15 @@ spec:
     repoURL: https://github.com/emileon9/Practicas-SA-B--202110363.git
     targetRevision: master
     path: P10/dashboards
+    directory:
+      # BUG real encontrado al sincronizar contra el clúster real: sin
+      # esto, ArgoCD intenta aplicar gateway-golden-signals.json
+      # directamente como si fuera un manifiesto de Kubernetes ("Object
+      # 'Kind' is missing") -- ese archivo es solo el dashboard
+      # exportado para cumplir el requisito de la practica de "exportar
+      # en JSON"; el que de verdad se aplica es configmap.yaml (que lo
+      # incrusta).
+      exclude: "{gateway-golden-signals.json}"
   destination:
     server: https://kubernetes.default.svc
     namespace: observability
