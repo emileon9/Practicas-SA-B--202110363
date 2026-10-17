@@ -42,9 +42,17 @@ config:
           level:
           service:
 
+# BUG real encontrado al desplegar contra el clúster real: con
+# limits.memory=128Mi, promtail corria pegado al limite (121Mi/128Mi,
+# ~94%) tailing los logs de TODO el namespace observability -- la
+# presion de memoria cercana al limite causaba pausas de GC que hacian
+# fallar el timeout de 1s del readinessProbe de forma persistente (9+
+# minutos sin pasar, sin reinicios -- no era OOMKill, era lentitud por
+# presion de memoria). Mismo patron de causa raiz que el fix de CPU de
+# Grafana (ver P10/observability/kube-prometheus-stack/values.yaml).
 resources:
-  requests: { cpu: 50m, memory: 64Mi }
-  limits: { cpu: 150m, memory: 128Mi }
+  requests: { cpu: 50m, memory: 96Mi }
+  limits: { cpu: 150m, memory: 256Mi }
 
 image:
   tag: "" # PENDIENTE: fijar tag real verificado
