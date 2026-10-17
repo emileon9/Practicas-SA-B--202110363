@@ -22,6 +22,20 @@ app.get("/metrics", async (_req, res) => {
   res.end(await registry.metrics());
 });
 
+// Fallo inducido NUEVO de Practica 10 (ver config/env.ts): retrasa una
+// fraccion del trafico REAL hacia los microservicios. Montado antes del
+// proxy para que el delay ocurra en el propio gateway (lo que mide
+// http_request_duration_seconds con el label pod_template_hash del Pod
+// candidato, ver analysistemplate.yaml), no en el microservicio de
+// destino. En 0 (default) esta rama nunca se toma.
+app.use((req, res, next) => {
+  if (env.faultInjectLatencyRate > 0 && Math.random() < env.faultInjectLatencyRate) {
+    setTimeout(next, env.faultInjectLatencyMs);
+    return;
+  }
+  next();
+});
+
 // El proxy hacia los microservicios va ANTES de express.json(): asi el
 // body de las peticiones (por ejemplo POST /api/users/graphql) llega
 // intacto al microservicio en vez de ser consumido por este Gateway.

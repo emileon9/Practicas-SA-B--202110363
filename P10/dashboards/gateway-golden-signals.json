@@ -1,0 +1,160 @@
+{
+  "title": "sa-platform / gateway — señales de oro",
+  "uid": "sa-platform-gateway-golden-signals",
+  "tags": ["sa-platform", "practica-10"],
+  "timezone": "utc",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tráfico — peticiones/seg al gateway",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 0 },
+      "description": "Responde: ¿cuánto tráfico real está recibiendo el gateway ahora mismo, y cómo se compara contra hace una hora?",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{route=~\"/api/.*\"}[5m])) by (method)",
+          "legendFormat": "{{method}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Errores — tasa de 5xx por ruta",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 0 },
+      "description": "Responde: ¿qué ruta está fallando ahora mismo, y desde cuándo?",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{route=~\"/api/.*\", status_code=~\"5..\"}[5m])) by (route)",
+          "legendFormat": "{{route}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 3,
+      "title": "Latencia — p50/p95/p99",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 7 },
+      "description": "Responde: ¿la latencia se está degradando, y para cuántos usuarios (p50 vs p99)?",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{route=~\"/api/.*\"}[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route=~\"/api/.*\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{route=~\"/api/.*\"}[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 4,
+      "title": "Saturación — CPU/memoria/event-loop (gateway, ms-orders, ms-users)",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 7 },
+      "description": "Responde: ¿algún servicio está cerca de su límite de recursos antes de que el usuario lo note?",
+      "targets": [
+        {
+          "expr": "sum(rate(process_cpu_user_seconds_total{job=~\"gateway|ms-orders|ms-users\"}[5m])) by (job)",
+          "legendFormat": "{{job}} CPU"
+        },
+        {
+          "expr": "sum(process_resident_memory_bytes{job=~\"gateway|ms-orders|ms-users\"}) by (job)",
+          "legendFormat": "{{job}} memoria"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "SLO — disponibilidad del gateway (objetivo 99%, ventana 30d)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 14 },
+      "description": "Responde: ¿estamos cumpliendo el SLO declarado de disponibilidad ahora mismo?",
+      "targets": [{ "expr": "slo:gateway_availability_ratio:rate1h * 100" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 98 },
+              { "color": "green", "value": 99 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Presupuesto de error consumido (disponibilidad, 30d)",
+      "type": "gauge",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 14 },
+      "description": "Responde: ¿cuánto margen de fallo nos queda este mes antes de incumplir el SLO?",
+      "targets": [{ "expr": "slo:gateway_availability_error_budget_remaining:ratio30d * 100" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": -20,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "green", "value": 50 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "SLO — latencia del gateway (objetivo 95% ≤1s)",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 14 },
+      "description": "Responde: ¿qué proporción de usuarios está recibiendo respuestas rápidas ahora mismo?",
+      "targets": [{ "expr": "slo:gateway_latency_ratio:rate5m * 100" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 90 },
+              { "color": "green", "value": 95 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Negocio — pedidos vistos por estado",
+      "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 19 },
+      "description": "Responde: ¿cuántos pedidos pendientes/enviados/entregados se están consultando? (comprensible sin conocer Kubernetes)",
+      "targets": [
+        {
+          "expr": "sum(rate(sa_orders_viewed_total[15m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Negocio — tamaño del catálogo de usuarios",
+      "type": "stat",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 19 },
+      "description": "Responde: ¿cuántos usuarios hay registrados en el sistema ahora mismo?",
+      "targets": [{ "expr": "sa_users_catalog_size" }]
+    }
+  ]
+}

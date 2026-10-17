@@ -48,6 +48,23 @@ extraEnv:
   # (ver P8/docs/INCIDENT.md).
   - name: FAULT_INJECT_RATE
     value: "0"
+  # Fallo inducido NUEVO de Practica 10 (distinto al de arriba): retrasa
+  # una fraccion del trafico real /api/* en vez de romper /health. En 0
+  # (este valor base) no cambia el comportamiento; solo el release de
+  # demostracion lo sobrescribe (ver P10/docs/operation-report.md).
+  - name: FAULT_INJECT_LATENCY_MS
+    value: "0"
+  - name: FAULT_INJECT_LATENCY_RATE
+    value: "0"
+  # Practica 10 (observabilidad): destino del OTel Collector dentro del
+  # clúster (ver P10/observability/otel-collector/values.yaml) y nombre de
+  # servicio real que identifica cada span/metrica. IMAGE_TAG se inyecta
+  # aparte en templates/rollout.yaml (values.yaml no es un template de
+  # Helm, no puede referenciar .Values/.Chart aqui).
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://otel-collector.observability.svc.cluster.local:4318"
+  - name: OTEL_SERVICE_NAME
+    value: "gateway"
 
 runAsUser: 1000
 runAsGroup: 1000

@@ -33,19 +33,38 @@ spec:
       # paso, Argo Rollouts promueve al 100% y escala a cero la version
       # anterior por si mismo. Dejarlo explicito seria redundante y ademas
       # haria que el ultimo paso NO fuera una compuerta de analisis.
+      # Practica 10: "args" con valueFrom.podTemplateHashValue le pide a
+      # Argo Rollouts que rellene el argumento canary-hash con el
+      # pod-template-hash REAL del ReplicaSet candidato de este rollout en
+      # el momento de correr el analisis (no un valor fijo) -- es lo que
+      # permite que las queries PromQL del AnalysisTemplate (ver
+      # analysistemplate.yaml) distingan el trafico del Pod nuevo del
+      # trafico del Pod estable.
       steps:
         - setWeight: 10
         - analysis:
             templates:
               - templateName: gateway-canary-analysis
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
         - setWeight: 30
         - analysis:
             templates:
               - templateName: gateway-canary-analysis
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
         - setWeight: 60
         - analysis:
             templates:
               - templateName: gateway-canary-analysis
+            args:
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
   selector:
     matchLabels:
       app: gateway
@@ -84,6 +103,12 @@ spec:
           env:
             - name: PORT
               value: {{ .Values.containerPort | quote }}
+            # Practica 10: version real del release como atributo de
+            # recurso OTel (resourceFromAttributes en observability/tracing.ts).
+            # No puede ir en extraEnv (values.yaml): necesita evaluarse
+            # como template de Helm, no como string literal.
+            - name: IMAGE_TAG
+              value: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
             {{- range .Values.extraEnv }}
             - name: {{ .name }}
               value: {{ .value | quote }}

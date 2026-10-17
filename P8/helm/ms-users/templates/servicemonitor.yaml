@@ -1,0 +1,16 @@
+# Ver el comentario completo en P8/helm/gateway/templates/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ms-users
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "ms-users.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: ms-users
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

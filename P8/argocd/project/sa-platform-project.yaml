@@ -69,3 +69,9 @@ spec:
       kind: AnalysisRun
     - group: bitnami.com
       kind: SealedSecret
+    # Practica 10: ServiceMonitor de gateway/ms-orders/ms-users vive en
+    # sa-p5 (junto al Service que describe), aunque lo consuma Prometheus
+    # desde el namespace "observability" (ver AppProject sa-observability
+    # en P10/argocd/project/).
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor

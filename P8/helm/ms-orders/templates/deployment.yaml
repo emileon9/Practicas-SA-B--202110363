@@ -50,6 +50,18 @@ spec:
           env:
             - name: PORT
               value: {{ .Values.containerPort | quote }}
+            # Practica 10 (observabilidad): ver el mismo bloque en
+            # helm/gateway/templates/rollout.yaml. USERS_SERVICE_URL es el
+            # nuevo llamado real de ms-orders -> ms-users (ver
+            # P5/services/ms-orders/app/config.py).
+            - name: IMAGE_TAG
+              value: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability.svc.cluster.local:4318"
+            - name: OTEL_SERVICE_NAME
+              value: "ms-orders"
+            - name: USERS_SERVICE_URL
+              value: "http://ms-users.{{ .Values.namespace }}.svc.cluster.local:4001"
             {{- range .Values.extraEnv }}
             - name: {{ .name }}
               value: {{ .value | quote }}

@@ -4,7 +4,7 @@
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { resourceFromAttributes } from "@opentelemetry/resources";
+import { Resource } from "@opentelemetry/resources";
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 
 const otlpEndpoint =
@@ -12,7 +12,7 @@ const otlpEndpoint =
   "http://otel-collector.observability.svc.cluster.local:4318";
 
 const sdk = new NodeSDK({
-  resource: resourceFromAttributes({
+  resource: new Resource({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "ms-users",
     [ATTR_SERVICE_VERSION]: process.env.IMAGE_TAG || "unknown",
   }),

@@ -27,6 +27,18 @@ spec:
       ports:
         - port: 4000
           protocol: TCP
+    # Practica 10: Prometheus (namespace "observability") necesita llegar
+    # a /metrics en el mismo puerto -- sin esta regla, el ServiceMonitor
+    # existiria y Prometheus lo descubriria, pero cada scrape fallaria por
+    # la politica de red, silenciosamente (sin error en ArgoCD ni en el
+    # propio Pod, solo "target down" en Prometheus).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - port: 4000
+          protocol: TCP
 ---
 {{- range $name, $port := (dict "ms-users" 4001 "ms-products" 4002 "ms-orders" 4003 "ms-notifications" 4004) }}
 apiVersion: networking.k8s.io/v1
@@ -50,8 +62,47 @@ spec:
       ports:
         - port: {{ $port }}
           protocol: TCP
+    # Practica 10: mismo motivo que la regla de gateway arriba -- cada
+    # servicio instrumentado expone /metrics en su propio puerto.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - port: {{ $port }}
+          protocol: TCP
 ---
 {{- end }}
+{{/*
+Practica 10: ms-orders ahora llama de verdad a ms-users (ver
+P5/services/ms-orders/app/services/users_client.py) para enriquecer cada
+pedido -- la primera llamada sincrona entre dos microservicios de este
+proyecto. Sin esta regla, la politica "allow-gateway-to-ms-users" de
+arriba (que SOLO permite trafico desde pods "app: gateway") bloquearia
+esa llamada nueva, aunque el codigo y el DNS esten correctos.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ms-orders-to-ms-users
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/part-of: sa-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: ms-users
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ms-orders
+      ports:
+        - port: 4001
+          protocol: TCP
+---
 {{- if .Values.postgresql.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

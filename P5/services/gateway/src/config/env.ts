@@ -14,4 +14,13 @@ export const env = {
   // Argo Rollouts): probabilidad (0-1) de que /health responda 500. En
   // 0 (default, no seteado) el comportamiento es identico al de P5/P7.
   faultInjectRate: parseFloat(process.env.FAULT_INJECT_RATE || "0"),
+  // Fallo inducido NUEVO (Practica 10, distinto del de P8): en vez de
+  // romper /health (una ruta sintetica que el canario ya no consulta --
+  // ver analysistemplate.yaml, ahora basado en PromQL sobre trafico
+  // real), este retrasa una fraccion del trafico REAL proxied hacia los
+  // microservicios (/api/*), para que el AnalysisTemplate lo detecte via
+  // p95-latency a partir de metricas reales, no de un ping sintetico. En
+  // 0 (default) el comportamiento es identico al normal.
+  faultInjectLatencyMs: parseInt(process.env.FAULT_INJECT_LATENCY_MS || "0", 10),
+  faultInjectLatencyRate: parseFloat(process.env.FAULT_INJECT_LATENCY_RATE || "0"),
 };

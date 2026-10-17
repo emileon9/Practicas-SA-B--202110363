@@ -1,0 +1,16 @@
+# Ver el comentario completo en P8/helm/gateway/templates/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ms-orders
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "ms-orders.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: ms-orders
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

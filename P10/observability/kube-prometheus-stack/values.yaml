@@ -73,8 +73,29 @@ alertmanager:
     securityContext:
       runAsNonRoot: true
       runAsUser: 65534
-  # Configuración real de receivers en P10/alerts/alertmanager-config.yaml
-  # (Secret aparte, nunca con credenciales reales en este archivo).
+  config:
+    route:
+      receiver: "default-null"
+      group_by: ["alertname", "slo"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # Las alertas "critical" (quema rapida del presupuesto de error)
+        # van a un receiver separado -- PENDIENTE: apuntarlo a un
+        # webhook/canal real (Slack, PagerDuty) antes de la demo. Nunca
+        # se versiona la URL/token real aqui: ver
+        # P10/alerts/webhook-url.example y P10/docs/runbook.md.
+        - receiver: "critical-alerts"
+          matchers:
+            - severity = "critical"
+    receivers:
+      - name: "default-null"
+      - name: "critical-alerts"
+        # PENDIENTE: agregar webhook_configs/slack_configs real. Sin
+        # receiver configurado, Alertmanager sigue agrupando/deduplicando
+        # la alerta (visible en su UI), solo no la reenvía a nadie
+        # todavía -- no es lo mismo que "la alerta no existe".
 
 # --- Grafana (incluida en este chart, no se instala por separado) ---
 grafana:
@@ -132,3 +153,135 @@ grafana:
       allow_embedding: false
     auth.anonymous:
       enabled: false
+
+# --- SLO (reglas de registro) + alertas de presupuesto de error ---
+# (Prioridades 5 y 6 de la Práctica 10). Se embeben aquí (en vez de un
+# PrometheusRule separado con su propia Application) para no depender de
+# un sync-wave adicional: kube-prometheus-stack ya las crea como parte de
+# la misma instalación. Ver P10/docs/slo.md para la justificación
+# completa de los dos objetivos y P10/docs/alerts.md para cada alerta.
+additionalPrometheusRulesMap:
+  sa-platform-slo-rules:
+    groups:
+      - name: sa-platform-slo-recording-rules
+        rules:
+          # SLI 1 (disponibilidad del gateway): proporcion de peticiones
+          # NO 5xx sobre el total, ventana corta (base para las ventanas
+          # largas de abajo via otra regla de registro, patron estandar
+          # de "multi-window, multi-burn-rate" del SRE Workbook de
+          # Google -- simplificado a una sola ventana rapida por el
+          # alcance de esta practica, ver P10/docs/slo.md limitaciones).
+          - record: slo:gateway_requests_total:rate5m
+            expr: sum(rate(http_requests_total{route=~"/api/.*"}[5m]))
+          - record: slo:gateway_requests_success:rate5m
+            expr: sum(rate(http_requests_total{route=~"/api/.*", status_code!~"5.."}[5m]))
+          - record: slo:gateway_availability_ratio:rate5m
+            expr: slo:gateway_requests_success:rate5m / slo:gateway_requests_total:rate5m
+
+          - record: slo:gateway_requests_total:rate1h
+            expr: sum(rate(http_requests_total{route=~"/api/.*"}[1h]))
+          - record: slo:gateway_requests_success:rate1h
+            expr: sum(rate(http_requests_total{route=~"/api/.*", status_code!~"5.."}[1h]))
+          - record: slo:gateway_availability_ratio:rate1h
+            expr: slo:gateway_requests_success:rate1h / slo:gateway_requests_total:rate1h
+
+          # SLI 2 (latencia del gateway): proporcion de peticiones que
+          # responden en <=1s (mismo umbral que ya usa el canario, ver
+          # P8/helm/gateway/templates/analysistemplate.yaml y el umbral
+          # de k6 en P8/tests/load/).
+          - record: slo:gateway_requests_fast:rate5m
+            expr: sum(rate(http_request_duration_seconds_bucket{route=~"/api/.*", le="1"}[5m]))
+          - record: slo:gateway_latency_ratio:rate5m
+            expr: slo:gateway_requests_fast:rate5m / slo:gateway_requests_total:rate5m
+
+          - record: slo:gateway_requests_fast:rate1h
+            expr: sum(rate(http_request_duration_seconds_bucket{route=~"/api/.*", le="1"}[1h]))
+          - record: slo:gateway_latency_ratio:rate1h
+            expr: slo:gateway_requests_fast:rate1h / slo:gateway_requests_total:rate1h
+
+          # Presupuesto de error consumido en la ventana de 30 dias
+          # declarada para el SLO de disponibilidad (objetivo 99%, ver
+          # P10/docs/slo.md). error_budget_remaining en 1.0 = presupuesto
+          # intacto; en 0 = agotado; negativo = ya se incumplio el SLO.
+          - record: slo:gateway_availability_error_budget_remaining:ratio30d
+            expr: >-
+              1 - (
+                (1 - (sum(increase(http_requests_total{route=~"/api/.*", status_code!~"5.."}[30d])) / sum(increase(http_requests_total{route=~"/api/.*"}[30d]))))
+                / (1 - 0.99)
+              )
+
+      - name: sa-platform-slo-alerts
+        rules:
+          # Alerta 1: quema rapida del presupuesto de error de
+          # disponibilidad. Umbral "14.4x" es el multiplicador estandar
+          # del SRE Workbook de Google para un burn-rate que agotaria un
+          # presupuesto de 30 dias en menos de 1 dia si se mantiene -- no
+          # un numero arbitrario. Ver P10/docs/alerts.md.
+          - alert: GatewayErrorBudgetBurnRateFast
+            expr: >-
+              slo:gateway_availability_ratio:rate5m < (1 - (14.4 * (1 - 0.99)))
+              and slo:gateway_requests_total:rate5m > 0
+            for: 2m
+            labels:
+              severity: critical
+              slo: gateway-availability
+            annotations:
+              summary: "El gateway está quemando el presupuesto de error de disponibilidad muy rápido"
+              description: >-
+                La disponibilidad real en los últimos 5 minutos está por
+                debajo del umbral que, de mantenerse, agotaría el
+                presupuesto de error de 30 días en menos de un día.
+              runbook_url: "https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P10/docs/runbook.md#alerta-gatewayerrorbudgetburnratefast"
+
+          - alert: GatewayErrorBudgetBurnRateSlow
+            expr: >-
+              slo:gateway_availability_ratio:rate1h < (1 - (6 * (1 - 0.99)))
+              and slo:gateway_requests_total:rate1h > 0
+            for: 15m
+            labels:
+              severity: warning
+              slo: gateway-availability
+            annotations:
+              summary: "El gateway está quemando el presupuesto de error de disponibilidad por encima de lo sostenible"
+              description: >-
+                Burn rate sostenido en la última hora que, de continuar,
+                agota el presupuesto de 30 días antes de tiempo, aunque
+                sin la urgencia de la alerta rápida.
+              runbook_url: "https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P10/docs/runbook.md#alerta-gatewayerrorbudgetburnrateslow"
+
+          # Alerta 2: latencia (SLO 2). Mismo patron de burn-rate, un solo
+          # umbral (no multi-ventana) por alcance de tiempo de esta
+          # practica -- ver limitacion documentada en P10/docs/slo.md.
+          - alert: GatewayLatencySLOBurnRate
+            expr: >-
+              slo:gateway_latency_ratio:rate5m < 0.90
+              and slo:gateway_requests_total:rate5m > 0
+            for: 5m
+            labels:
+              severity: warning
+              slo: gateway-latency
+            annotations:
+              summary: "El gateway está respondiendo más lento de lo que el SLO de latencia permite"
+              description: >-
+                Menos del 90% de las peticiones recientes responden en
+                <=1s (objetivo del SLO: 95%). Puede ser saturación, un
+                backend lento, o el fallo de latencia inducido (ver
+                FAULT_INJECT_LATENCY_RATE en P8/helm/gateway/values.yaml).
+              runbook_url: "https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P10/docs/runbook.md#alerta-gatewaylatencysloburnrate"
+
+          # Alerta operativa simple (no de presupuesto de error, pero
+          # justificada: sin trafico real no hay señal para NINGUNA de
+          # las alertas de arriba -- un silencio total del gateway es en
+          # si mismo un sintoma, no ausencia de problema).
+          - alert: GatewayNoTraffic
+            expr: slo:gateway_requests_total:rate5m == 0
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: "El gateway no reporta tráfico real en los últimos 10 minutos"
+              description: >-
+                Puede ser normal fuera de horario de pruebas, o indicar
+                que nada llega al gateway (Ingress caído, DNS, o el
+                propio gateway sin pods Ready).
+              runbook_url: "https://github.com/emileon9/Practicas-SA-B--202110363/blob/master/P10/docs/runbook.md#alerta-gatewaynotraffic"

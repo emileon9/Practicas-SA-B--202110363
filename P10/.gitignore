@@ -1,0 +1,10 @@
+# Evidencia generada por las pruebas reales (logs/salidas especificas de
+# cada corrida local): se versiona la carpeta, no los archivos generados
+# automaticamente en cada intento.
+evidence/*.log
+evidence/*.txt
+!evidence/README.md
+
+# Credenciales del receiver real de Alertmanager (webhook/token), si se
+# llegara a probar localmente con uno real en vez de PENDIENTE.
+alerts/webhook-url

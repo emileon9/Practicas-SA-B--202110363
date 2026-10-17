@@ -10,7 +10,7 @@
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { resourceFromAttributes } from "@opentelemetry/resources";
+import { Resource } from "@opentelemetry/resources";
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 
 const otlpEndpoint =
@@ -18,7 +18,11 @@ const otlpEndpoint =
   "http://otel-collector.observability.svc.cluster.local:4318";
 
 const sdk = new NodeSDK({
-  resource: resourceFromAttributes({
+  // API real de @opentelemetry/resources 1.30.x instalada (verificado con
+  // `node -e "console.log(Object.keys(require('@opentelemetry/resources')))"`
+  // tras el error de compilacion inicial: "resourceFromAttributes" no
+  // existe en esta version, es de una version 2.x que no quedo instalada).
+  resource: new Resource({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "gateway",
     [ATTR_SERVICE_VERSION]: process.env.IMAGE_TAG || "unknown",
   }),

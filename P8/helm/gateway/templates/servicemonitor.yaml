@@ -1,0 +1,31 @@
+# Practica 10: le dice a Prometheus (kube-prometheus-stack, namespace
+# "observability") que scrapee /metrics de este Service. Funciona porque
+# Prometheus esta configurado con serviceMonitorNamespaceSelector: {}
+# (ver P10/observability/kube-prometheus-stack/values.yaml) -- sin eso,
+# Prometheus solo miraria ServiceMonitor de su propio namespace y este
+# recurso, aunque existiera, seria ignorado.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: gateway
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      # Copia el label de Pod "rollouts-pod-template-hash" (lo pone Argo
+      # Rollouts automaticamente en cada Pod, estable o canario) a un
+      # label real de la metrica. Sin esto, Prometheus Operator lo deja
+      # como meta-label interno "__meta_kubernetes_pod_label_..." y se
+      # descarta antes de llegar a /metrics -- las queries PromQL del
+      # AnalysisTemplate (analysistemplate.yaml) no podrian distinguir
+      # trafico del Pod candidato del Pod estable.
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash]
+          targetLabel: pod_template_hash

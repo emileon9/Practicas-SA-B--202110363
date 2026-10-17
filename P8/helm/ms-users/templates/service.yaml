@@ -12,6 +12,7 @@ spec:
   selector:
     app: ms-users
   ports:
-    - port: {{ .Values.containerPort }}
+    - name: http
+      port: {{ .Values.containerPort }}
       targetPort: {{ .Values.containerPort }}
       protocol: TCP

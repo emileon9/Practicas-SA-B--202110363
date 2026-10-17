@@ -98,6 +98,18 @@ resource "helm_release" "argocd" {
 # estrictamente necesario en la calificación.
 
 resource "kubernetes_manifest" "sa_platform_project" {
+  # El AppProject real ya existía en docker-desktop, aplicado con
+  # `kubectl apply` (client-side) en P8 -- verificado y confirmado con
+  # `terraform import` en esta sesión. Sin `force_conflicts`, el
+  # field-manager de Terraform (server-side apply) choca con el
+  # field-manager "kubectl-client-side-apply" que sigue registrado en el
+  # objeto. force_conflicts=true le dice a Terraform "toma la propiedad
+  # de estos campos" -- correcto aquí porque el propio Terraform es
+  # ahora la fuente de verdad de este AppProject.
+  field_manager {
+    force_conflicts = true
+  }
+
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
     kind       = "AppProject"
@@ -114,6 +126,16 @@ resource "kubernetes_manifest" "sa_platform_project" {
       destinations = [
         {
           namespace = var.platform_namespace
+          server    = "https://kubernetes.default.svc"
+        },
+        {
+          # Necesario porque la Application raíz y sa-platform-p8-apps
+          # crean sus Applications hijas EN el namespace de ArgoCD, no en
+          # sa-p5. Sin esto, ArgoCD rechaza sa-platform-root con
+          # "InvalidSpecError: ... do not match any of the allowed
+          # destinations" (error real, encontrado al aplicar contra el
+          # clúster real en esta sesión).
+          namespace = var.argocd_namespace
           server    = "https://kubernetes.default.svc"
         },
         {
@@ -141,7 +163,14 @@ resource "kubernetes_manifest" "sa_platform_project" {
         { group = "argoproj.io", kind = "Rollout" },
         { group = "argoproj.io", kind = "AnalysisTemplate" },
         { group = "argoproj.io", kind = "AnalysisRun" },
+        # Necesario para que sa-platform-root y sa-platform-p8-apps
+        # puedan crear/gestionar Applications hijas dentro del namespace
+        # argocd (app-of-apps de dos niveles).
+        { group = "argoproj.io", kind = "Application" },
         { group = "bitnami.com", kind = "SealedSecret" },
+        # Practica 10: ver el mismo comentario en
+        # P8/argocd/project/sa-platform-project.yaml.
+        { group = "monitoring.coreos.com", kind = "ServiceMonitor" },
         { group = "velero.io", kind = "Schedule" },
         { group = "velero.io", kind = "BackupStorageLocation" },
       ]

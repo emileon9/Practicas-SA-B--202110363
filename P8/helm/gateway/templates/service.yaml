@@ -12,6 +12,11 @@ spec:
   selector:
     app: gateway
   ports:
-    - port: {{ .Values.containerPort }}
+    # name "http" agregado en Practica 10: lo usa el ServiceMonitor
+    # (templates/servicemonitor.yaml) para saber a que puerto scrapear
+    # /metrics. No afecta el proxy existente (sigue resolviendo por nombre
+    # de Service + numero de puerto, ignora el nombre del puerto).
+    - name: http
+      port: {{ .Values.containerPort }}
       targetPort: {{ .Values.containerPort }}
       protocol: TCP
