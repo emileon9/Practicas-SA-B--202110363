@@ -29,6 +29,15 @@ spec:
       server: https://kubernetes.default.svc
     - namespace: argocd
       server: https://kubernetes.default.svc
+    # BUG real encontrado al sincronizar contra el clúster real:
+    # kube-prometheus-stack crea Services "espejo" (sin selector, con
+    # Endpoints administrados aparte) en kube-system para poder
+    # scrapear kube-proxy/kube-scheduler/coredns/etcd/controller-manager
+    # -- es el patron oficial del chart, no una decision propia. Sin
+    # este destino, el sync fallaba con "namespace kube-system is not
+    # permitted in project".
+    - namespace: kube-system
+      server: https://kubernetes.default.svc
 
   # A diferencia de sa-platform: SÍ se permiten recursos de clúster, pero
   # acotados exactamente a lo que Prometheus Operator necesita (CRDs +
@@ -79,3 +88,11 @@ spec:
       kind: Prometheus
     - group: monitoring.coreos.com
       kind: Alertmanager
+    # BUG real encontrado al sincronizar: el Job de admission-webhook de
+    # Prometheus Operator necesita un Role/RoleBinding de namespace para
+    # poder parchear la configuracion del webhook -- distinto del
+    # ClusterRole/ClusterRoleBinding ya permitidos arriba.
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding

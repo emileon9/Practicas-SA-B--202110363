@@ -35,6 +35,10 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # Ver el mismo comentario en applications/tempo.yaml -- afecta los
+      # StatefulSet de Prometheus y Alertmanager, ya instalados
+      # manualmente en la sesion de prueba anterior.
+      - Replace=true
     retry:
       limit: 3
       backoff:

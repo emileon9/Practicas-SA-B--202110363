@@ -31,6 +31,14 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # BUG real encontrado al sincronizar contra el clúster real: el
+      # StatefulSet "tempo" ya existia (instalado manualmente en la
+      # sesion de prueba anterior) con un campo inmutable distinto del
+      # que renderiza ArgoCD -> "updates to statefulset spec ... are
+      # forbidden". Replace=true hace que ArgoCD elimine y recree el
+      # objeto en vez de intentar un patch -- el PVC no se pierde
+      # (reclaimPolicy del StorageClass), solo el Pod se reinicia.
+      - Replace=true
     retry:
       limit: 3
       backoff:
